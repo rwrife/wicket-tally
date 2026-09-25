@@ -1,0 +1,222 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-package:
+    name: WicketKit + WicketStore (Linux swift test)
+    runs-on: ubuntu-latest
+    container:
+      image: swift:6.2-noble
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Check out exact triggering commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert exact checkout
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          actual=$(git rev-parse HEAD)
+          [ "$actual" = "$TARGET_SHA" ] || { echo "FAIL: expected $TARGET_SHA, got $actual"; exit 1; }
+          echo "Exact PR head: $actual"
+
+      - name: Assert Swift 6
+        run: |
+          set -euo pipefail
+          swift --version
+          swift --version | grep -E 'Swift version 6\.' \
+            || { echo "FAIL: Swift 6 toolchain required"; exit 1; }
+
+      - name: Install Linux system dependencies (SQLite + Python)
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq libsqlite3-dev python3
+
+      - name: Run package unit tests
+        run: swift test --package-path Packages/WicketKit
+
+      - name: WicketKit purity gate
+        run: |
+          set -euo pipefail
+          if grep -RnE '^import[[:space:]]+(UIKit|SwiftUI|GRDB)\b' Packages/WicketKit/Sources/WicketKit; then
+            echo "FAIL: WicketKit must remain pure Swift (no UIKit, SwiftUI, or GRDB imports)"
+            exit 1
+          fi
+          echo "WicketKit purity gate: PASS"
+
+      - name: Zero-network gate
+        run: bash scripts/check_zero_network.sh
+
+      - name: Native platform + bundle policy gate
+        run: bash scripts/check_platform_policy.sh
+
+      - name: Gitignore keeps signing material out
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          for f in fake.p8 fake.p12 fake.mobileprovision fake.cer; do
+            touch "$f"
+            git check-ignore -q "$f" || { echo "FAIL: $f is not gitignored"; exit 1; }
+            rm "$f"
+          done
+          echo "Signing-material gitignore check: PASS"
+
+  ios-build:
+    name: iOS build + iPhone-only + exact toolchain pin
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Check out exact triggering commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert toolchain.json policy pins
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("toolchain.json").read_text())
+          expected = {
+              "xcode_version": "26.0.1",
+              "xcode_build": "17A400",
+              "iphoneos_sdk": "26.0",
+              "swift_language_mode": "6",
+              "bundle_identifier": "com.infinityball.wickettally",
+              "targeted_device_family": "1",
+              "native_ipad_support": False,
+          }
+          for key, value in expected.items():
+              actual = data.get(key)
+              if actual != value:
+                  raise SystemExit(f"FAIL: toolchain.json {key} expected {value!r}, got {actual!r}")
+          print("toolchain.json exact policy pins: PASS")
+          PY
+
+      - name: Select exact pinned toolchain (blocker if absent)
+        run: |
+          set -euo pipefail
+          REQUIRED_VERSION="Xcode 26.0.1"
+          REQUIRED_BUILD="17A400"
+          found=""
+          for app in /Applications/Xcode_26.0.1.app /Applications/Xcode_26.0.1_*.app /Applications/Xcode_26.0.app /Applications/Xcode.app; do
+            [ -d "$app" ] || continue
+            dev="$app/Contents/Developer"
+            measured=$(DEVELOPER_DIR="$dev" xcodebuild -version 2>/dev/null | tr -d '\r') || continue
+            version_line=$(echo "$measured" | head -1)
+            build_number=$(echo "$measured" | grep -i 'build version' | awk '{print $3}')
+            if [ "$version_line" = "$REQUIRED_VERSION" ] && [ "$build_number" = "$REQUIRED_BUILD" ]; then
+              found="$dev"
+              echo "Exact pin found: $app ($version_line, build $build_number)"
+              break
+            fi
+          done
+          if [ -z "$found" ]; then
+            echo "::error::ACCEPTANCE BLOCKER: required $REQUIRED_VERSION ($REQUIRED_BUILD) is absent. Installed candidates:"
+            for app in /Applications/Xcode*.app; do
+              [ -d "$app" ] || continue
+              echo "$app"
+              DEVELOPER_DIR="$app/Contents/Developer" xcodebuild -version 2>/dev/null || true
+            done
+            exit 1
+          fi
+          sudo xcode-select -s "$found"
+          xcodebuild -version
+
+      - name: Assert iOS SDK 26.0 and Swift 6
+        run: |
+          set -euo pipefail
+          sdk=$(xcrun --sdk iphoneos --show-sdk-version)
+          [ "$sdk" = "26.0" ] \
+            || { echo "::error::ACCEPTANCE BLOCKER: expected iphoneos SDK 26.0, got $sdk"; exit 1; }
+          swift --version | grep -E 'Swift version 6\.' \
+            || { echo "::error::ACCEPTANCE BLOCKER: Swift 6 required"; exit 1; }
+          echo "Pinned SDK $sdk and Swift 6: PASS"
+
+      - name: Source policy gates
+        run: |
+          bash scripts/check_zero_network.sh
+          bash scripts/check_platform_policy.sh
+          if grep -RnE '^import[[:space:]]+(UIKit|SwiftUI|GRDB)\b' Packages/WicketKit/Sources/WicketKit; then
+            echo "FAIL: WicketKit must remain pure Swift"
+            exit 1
+          fi
+          echo "WicketKit purity gate: PASS"
+
+      - name: Run package unit tests
+        run: swift test --package-path Packages/WicketKit
+
+      - name: Build for iPhone simulator
+        run: |
+          set -euo pipefail
+          xcodebuild -project WicketTally.xcodeproj \
+            -scheme WicketTally \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath DerivedData \
+            build
+
+      - name: Verify built app policy
+        run: |
+          set -euo pipefail
+          app=$(find DerivedData/Build/Products -maxdepth 2 -name 'WicketTally.app' -type d | head -1)
+          [ -n "$app" ] || { echo "::error::built app not found"; exit 1; }
+          echo "Checking $app/Info.plist"
+
+          family_xml=$(plutil -extract UIDeviceFamily xml1 -o - "$app/Info.plist")
+          family_one_count=$(printf '%s' "$family_xml" | grep -c '<integer>1</integer>')
+          [ "$family_one_count" = "1" ] \
+            || { echo "::error::UIDeviceFamily is not [1]: $family_xml"; exit 1; }
+          if printf '%s' "$family_xml" | grep -q '<integer>2</integer>'; then
+            echo "::error::built app declares iPad support"
+            exit 1
+          fi
+          echo "Built app UIDeviceFamily == [1]: PASS"
+
+          bundle_id=$(plutil -extract CFBundleIdentifier raw -o - "$app/Info.plist")
+          [ "$bundle_id" = "com.infinityball.wickettally" ] \
+            || { echo "::error::bundle id is $bundle_id"; exit 1; }
+          echo "Bundle id $bundle_id: PASS"
+
+          [ -f "$app/PrivacyInfo.xcprivacy" ] \
+            || { echo "::error::PrivacyInfo.xcprivacy not embedded"; exit 1; }
+          echo "Privacy manifest embedded: PASS"
+          echo "Exact verified commit: $(git rev-parse HEAD)"
+
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wicket-tally-ios-${{ env.TARGET_SHA }}
+          path: |
+            DerivedData/Logs/Build
+            DerivedData/Build/Products/Release-iphonesimulator/WicketTally.app/Info.plist
+          if-no-files-found: warn
+          retention-days: 14
