@@ -2,7 +2,7 @@
 
 **Wicket Tally** is a local-first iPhone app for scheduling and scoring cricket matches — designed first for the sunny village ground and the weekend gully league. Huge sun-proof controls, glanceable scores from across the pitch, and a bold Indian street-cricket look. No accounts, no cloud, no subscriptions.
 
-> Documentation and backlog only. No app binary, build, or store listing exists yet — see Current status.
+> Skeleton landed (issue #1): native iPhone app target + WicketKit/WicketStore packages + pinned CI policy gates. Feature implementation is still pending — see Current status.
 
 ## Overview
 
@@ -64,20 +64,22 @@ All data lives in a local database on the device. No network calls, no analytics
 
 ## Current status and milestones
 
-Documentation and backlog only. No code exists yet.
+Skeleton landed (issue #1): an iPhone-only SwiftUI app target (`com.infinityball.wickettally`), the `WicketKit` package (pure Swift 6 domain namespace + `WicketStore` GRDB migration scaffold), and CI that runs package unit tests, the zero-network and platform-policy grep gates, and a pinned-Xcode simulator build on every PR. No user-facing features exist yet — the scorer, scheduling, and stats screens are still ahead.
 
-1. M1: Domain core (`WicketKit`) + store + CI skeleton
+1. M1: Domain core (`WicketKit`) + store + CI skeleton — **CI skeleton done (issue #1)**; domain core in progress
 2. M2: League/team/fixture setup
 3. M3: Outdoor ball-by-ball scorer + glance mode
 4. M4: Standings, stats, and export
 5. M5: Design system polish (sunlight themes + Indian-flair skins) → TestFlight
 
-## Development / build quickstart (planned)
+## Development / build quickstart
 
-- Native Swift (SwiftUI) iPhone-only app, iOS 26-or-newer SDK, per `toolchain.json` (Xcode 26.0.1 / iOS SDK 26.0 / Swift 6).
-- `TARGETED_DEVICE_FAMILY = 1` in every app configuration; native iPad support disabled.
-- Bundle id `com.infinityball.wickettally` (registered in App Store Connect).
-- Future skeleton: Swift Package `WicketKit` (pure domain) + GRDB store + XCTest; xcodebuild on Apple CI runners; TestFlight via App Store Connect Actions secrets (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `ASC_TEAM_ID` — names only).
+- Native Swift (SwiftUI) iPhone-only app, iOS 26 SDK, Swift 6, per `toolchain.json` (Xcode 26.0.1 / build 17A400 / iOS SDK 26.0). A missing exact pin on a CI runner is an environment acceptance blocker, never a silent substitute.
+- `TARGETED_DEVICE_FAMILY = 1` in every app-target build configuration (project-level and target-level, Debug and Release); CI asserts it pre-build (grep) and post-build (`UIDeviceFamily == [1]` in the built `Info.plist`).
+- Bundle id `com.infinityball.wickettally` (registered in App Store Connect); CI enforces the `com.infinityball.` prefix.
+- Open `WicketTally.xcodeproj` in the pinned Xcode and build the `WicketTally` scheme for an iPhone simulator, or run the domain/store tests headlessly with `swift test --package-path Packages/WicketKit` (needs system SQLite headers on Linux, e.g. `libsqlite3-dev`).
+- CI policy gates: `scripts/check_zero_network.sh` (empty allowlist — any URLSession/Network usage fails) and `scripts/check_platform_policy.sh` (no Flutter/React Native/Expo/Kotlin Multiplatform/.NET MAUI/Unity references, bundle-id prefix, iPhone-only device family).
+- Signing material (`*.p8`, `*.p12`, `*.mobileprovision`) is gitignored; CI asserts this with `git check-ignore`. App Store Connect secrets (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `ASC_TEAM_ID`) are wired later via GitHub Actions secret names only.
 
 ## License
 
