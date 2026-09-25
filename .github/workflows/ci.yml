@@ -34,6 +34,7 @@ jobs:
       - name: Assert exact checkout
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           actual=$(git rev-parse HEAD)
           [ "$actual" = "$TARGET_SHA" ] || { echo "FAIL: expected $TARGET_SHA, got $actual"; exit 1; }
           echo "Exact PR head: $actual"
