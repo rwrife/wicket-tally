@@ -18,6 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: swift:6.2-noble
+    defaults:
+      run:
+        shell: bash
     env:
       TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
