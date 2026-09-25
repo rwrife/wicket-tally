@@ -51,8 +51,11 @@ jobs:
           apt-get update -qq
           apt-get install -y -qq libsqlite3-dev python3
 
-      - name: Run package unit tests
-        run: swift test --package-path Packages/WicketKit
+      - name: Run package unit tests with coverage
+        run: swift test --package-path Packages/WicketKit --enable-code-coverage
+
+      - name: WicketKit coverage floor (>=90%)
+        run: bash scripts/check_wicketkit_coverage.sh
 
       - name: WicketKit purity gate
         run: |

@@ -1,15 +1,15 @@
 import Testing
 @testable import WicketKit
 
-@Suite("WicketKit skeleton placeholder")
+@Suite("WicketKit domain core")
 struct WicketKitTests {
     @Test("domain namespace is reachable")
     func domainNamespace() {
         #expect(WicketKit.domain == "WicketKit")
     }
 
-    @Test("milestone marker is set for M0")
+    @Test("milestone marker reflects the ledger/rules/derivations milestone")
     func milestoneMarker() {
-        #expect(WicketKit.milestone == "M0-skeleton")
+        #expect(WicketKit.milestone == "M1-ledger-rules-derivations")
     }
 }
