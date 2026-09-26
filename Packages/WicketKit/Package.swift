@@ -35,6 +35,9 @@ let package = Package(
             dependencies: [
                 "WicketStore",
                 "WicketKit",
+            ],
+            resources: [
+                .copy("Fixtures/wicket-store-v1.sqlite"),
             ]
         ),
     ]
