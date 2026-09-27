@@ -10,15 +10,21 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            LeaguesView(model: model)
-                .navigationDestination(for: LeagueID.self) { leagueID in
-                    LeagueTeamsView(model: model, leagueID: leagueID)
-                }
-                .navigationDestination(for: TeamID.self) { teamID in
-                    TeamPlayersView(model: model, teamID: teamID)
-                }
-                .navigationTitle("Setup")
+        TabView {
+            FixturesView(model: .live())
+                .tabItem { Label("Fixtures", systemImage: "calendar") }
+
+            NavigationStack {
+                LeaguesView(model: model)
+                    .navigationDestination(for: LeagueID.self) { leagueID in
+                        LeagueTeamsView(model: model, leagueID: leagueID)
+                    }
+                    .navigationDestination(for: TeamID.self) { teamID in
+                        TeamPlayersView(model: model, teamID: teamID)
+                    }
+                    .navigationTitle("Setup")
+            }
+            .tabItem { Label("Setup", systemImage: "person.3") }
         }
         .dynamicTypeSize(.xSmall ... .accessibility5)
         .alert(
