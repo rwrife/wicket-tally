@@ -82,7 +82,7 @@ struct FixturesView: View {
             }
             .overlay(alignment: .bottom) {
                 if bootstrapDraft() == nil {
-                    Text("Create at least one league with two teams and one ground in Setup first.")
+                    Text("Create at least one league with two teams in Setup first.")
                         .font(.footnote)
                         .multilineTextAlignment(.center)
                         .padding(12)
@@ -133,8 +133,7 @@ struct FixturesView: View {
     }
 
     private func bootstrapDraft() -> FixtureDraft? {
-        guard let firstLeague = model.leagues.first,
-              let firstGround = model.grounds.first else { return nil }
+        guard let firstLeague = model.leagues.first else { return nil }
         let leagueTeams = model.teams.filter { $0.leagueID == firstLeague.id }
         guard leagueTeams.count >= 2 else { return nil }
         let start = Date().addingTimeInterval(7_200)
@@ -143,7 +142,7 @@ struct FixturesView: View {
             name: "\(leagueTeams[0].name) vs \(leagueTeams[1].name)",
             homeTeamID: leagueTeams[0].id,
             awayTeamID: leagueTeams[1].id,
-            groundID: firstGround.id,
+            groundID: model.grounds.first?.id ?? GroundID(""),
             startsAt: start,
             endsAt: start.addingTimeInterval(7_200),
             reminder: .oneHourBefore
@@ -259,6 +258,11 @@ private struct FixtureEditorSheet: View {
                 Picker("Ground", selection: $draft.groundID) {
                     ForEach(grounds) { ground in
                         Text(ground.name).tag(ground.id)
+                    }
+                }
+                .onAppear {
+                    if draft.groundID.rawValue.isEmpty, let first = grounds.first {
+                        draft.groundID = first.id
                     }
                 }
 
