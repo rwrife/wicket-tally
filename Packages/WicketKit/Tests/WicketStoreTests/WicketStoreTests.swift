@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import Testing
+import WicketKit
 @testable import WicketStore
 
 @Suite("WicketStore v1 migration")
@@ -16,9 +17,10 @@ struct WicketStoreMigrationTests {
                 sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
             ))
         }
-        #expect(tables.isSuperset(of: ["leagues", "teams", "players", "grdb_migrations"]))
+        #expect(tables.isSuperset(of: ["leagues", "teams", "players", "grounds", "fixtures", "fixture_players", "grdb_migrations"]))
 
         try queue.write { db in
+            try WicketStore.removeV2Schema(db)
             try WicketStore.removeV1Schema(db)
         }
 
@@ -49,6 +51,127 @@ struct WicketStoreMigrationTests {
         #expect(teams.first?.colour == .saffron)
         #expect(players.map(\.name) == ["Asha Rao"])
         #expect(players.first?.role == .allRounder)
+    }
+}
+
+@Suite("Fixture CRUD and persisted conflict checks")
+struct WicketStoreFixtureTests {
+    @Test("creates, updates, lists, and deletes standalone and league fixtures")
+    func crudLifecycle() throws {
+        let store = try WicketStore.inMemory()
+        let league = try store.createLeague(name: "Park League", kind: .league)
+        let home = try store.createTeam(leagueID: league.id, name: "Home XI", colour: .cricketRed)
+        let away = try store.createTeam(leagueID: league.id, name: "Away XI", colour: .skyBlue)
+        let homePlayer = try store.createPlayer(teamID: home.id, name: "Asha", role: .batter)
+        let awayPlayer = try store.createPlayer(teamID: away.id, name: "Dev", role: .bowler)
+        let ground = try store.createGround(name: " Azad Maidan ")
+        let startsAt = date("2026-10-04T09:00:00Z")
+        let endsAt = date("2026-10-04T11:00:00Z")
+
+        let fixture = try store.createFixture(
+            leagueID: league.id,
+            name: "Morning match",
+            homeTeamID: home.id,
+            awayTeamID: away.id,
+            groundID: ground.id,
+            participatingPlayerIDs: [homePlayer.id, awayPlayer.id],
+            startsAt: startsAt,
+            endsAt: endsAt,
+            reminder: .oneHourBefore
+        )
+
+        #expect(ground.name == "Azad Maidan")
+        let renamedGround = try store.updateGround(id: ground.id, name: "North Azad Maidan")
+        #expect(renamedGround.name == "North Azad Maidan")
+        #expect(try store.listGrounds() == [renamedGround])
+        #expect(try store.listFixtures() == [fixture])
+        #expect(try store.listUpcomingFixtures(after: date("2026-10-04T08:59:00Z")) == [fixture])
+        #expect(try store.listUpcomingFixtures(after: endsAt).isEmpty)
+
+        let updated = try store.updateFixture(
+            id: fixture.id,
+            leagueID: nil,
+            name: "Standalone final",
+            homeTeamID: home.id,
+            awayTeamID: away.id,
+            groundID: ground.id,
+            participatingPlayerIDs: [homePlayer.id],
+            startsAt: startsAt.addingTimeInterval(3_600),
+            endsAt: endsAt.addingTimeInterval(3_600),
+            reminder: .fifteenMinutesBefore
+        )
+        #expect(updated.leagueID == nil)
+        #expect(updated.name == "Standalone final")
+        #expect(updated.participatingPlayerIDs == [homePlayer.id])
+
+        try store.deleteFixture(id: fixture.id)
+        #expect(try store.listFixtures().isEmpty)
+    }
+
+    @Test("stored conflict check names every clashing fixture and reason")
+    func conflictMatrix() throws {
+        let store = try WicketStore.inMemory()
+        let league = try store.createLeague(name: "Office Cup", kind: .tournament)
+        let home = try store.createTeam(leagueID: league.id, name: "Home XI", colour: .wicketGreen)
+        let away = try store.createTeam(leagueID: league.id, name: "Away XI", colour: .royalPurple)
+        let player = try store.createPlayer(teamID: home.id, name: "Mira", role: .allRounder)
+        let ground = try store.createGround(name: "Main Ground")
+        let start = date("2026-10-04T09:00:00Z")
+        let end = date("2026-10-04T11:00:00Z")
+        _ = try store.createFixture(
+            leagueID: league.id,
+            name: "Existing fixture",
+            homeTeamID: home.id,
+            awayTeamID: away.id,
+            groundID: ground.id,
+            participatingPlayerIDs: [player.id],
+            startsAt: start,
+            endsAt: end,
+            reminder: .none
+        )
+
+        let candidate = FixtureRecord(
+            id: "candidate",
+            leagueID: league.id,
+            name: "Candidate fixture",
+            homeTeamID: home.id,
+            awayTeamID: away.id,
+            groundID: ground.id,
+            participatingPlayerIDs: [player.id],
+            startsAt: start.addingTimeInterval(1_800),
+            endsAt: end.addingTimeInterval(1_800),
+            reminder: .none,
+            createdAt: start,
+            updatedAt: start
+        )
+        let conflicts = try store.conflicts(for: candidate)
+        #expect(conflicts.count == 1)
+        #expect(conflicts[0].clashingFixtureName == "Existing fixture")
+        let reasons = Set(conflicts[0].reasons)
+        #expect(reasons.contains(.ground(ground.id)))
+        #expect(reasons.contains(.player(player.id)))
+        #expect(reasons.count == 2)
+        #expect(conflicts[0].explanation.contains("Existing fixture"))
+    }
+
+    @Test("rejects invalid fixture relationships and slots")
+    func validation() throws {
+        let store = try WicketStore.inMemory()
+        let league = try store.createLeague(name: "League", kind: .league)
+        let team = try store.createTeam(leagueID: league.id, name: "Solo XI", colour: .saffron)
+        let ground = try store.createGround(name: "Ground")
+        let start = date("2026-10-04T09:00:00Z")
+
+        #expect(throws: WicketStoreError.invalidTimeSlot) {
+            try store.createFixture(leagueID: league.id, name: "Bad", homeTeamID: team.id, awayTeamID: team.id, groundID: ground.id, participatingPlayerIDs: [], startsAt: start, endsAt: start, reminder: .none)
+        }
+        #expect(throws: WicketStoreError.invalidTeams) {
+            try store.createFixture(leagueID: league.id, name: "Bad", homeTeamID: team.id, awayTeamID: team.id, groundID: ground.id, participatingPlayerIDs: [], startsAt: start, endsAt: start.addingTimeInterval(3_600), reminder: .none)
+        }
+    }
+
+    private func date(_ value: String) -> Date {
+        ISO8601DateFormatter().date(from: value)!
     }
 }
 

@@ -162,6 +162,13 @@ final class SetupViewModel {
         try reloadPlayers(for: player.teamID)
     }
 
+    // MARK: - Grounds
+
+    func createGround(name: String) throws {
+        _ = try requiredStore().createGround(name: name)
+        errorMessage = nil
+    }
+
     func report(_ error: Error) {
         errorMessage = Self.userMessage(for: error)
     }
