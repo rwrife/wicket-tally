@@ -28,6 +28,15 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
       <Testables>
+         <TestableReference skipped="NO">
+            <BuildableReference
+               BuildableIdentifier="primary"
+               BlueprintIdentifier="AA00000000000000000000C0"
+               BuildableName="WicketTallyUITests.xctest"
+               BlueprintName="WicketTallyUITests"
+               ReferencedContainer="container:WicketTally.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

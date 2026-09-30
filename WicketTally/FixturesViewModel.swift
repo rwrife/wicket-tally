@@ -30,16 +30,7 @@ final class FixturesViewModel {
 
     static func live() -> FixturesViewModel {
         do {
-            let manager = FileManager.default
-            let applicationSupport = try manager.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
-            let directory = applicationSupport.appendingPathComponent("WicketTally", isDirectory: true)
-            try manager.createDirectory(at: directory, withIntermediateDirectories: true)
-            let store = try WicketStore.open(at: directory.appendingPathComponent("wicket-tally.sqlite"))
+            let store = try LocalStore.open()
             return FixturesViewModel(store: store, notifications: LocalFixtureNotificationScheduler())
         } catch {
             return FixturesViewModel(

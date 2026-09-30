@@ -89,7 +89,7 @@ jobs:
   ios-build:
     name: iOS build + iPhone-only + exact toolchain pin
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
@@ -222,6 +222,9 @@ jobs:
           echo "Privacy manifest embedded: PASS"
           echo "Exact verified commit: $(git rev-parse HEAD)"
 
+      - name: Run scorer UI tests on smallest available iPhone
+        run: bash scripts/run_ios_ui_tests.sh
+
       - name: Upload build evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -230,5 +233,9 @@ jobs:
           path: |
             DerivedData/Logs/Build
             DerivedData/Build/Products/Release-iphonesimulator/WicketTally.app/Info.plist
+            evidence/ScorerUITests.xcresult
+            evidence/screenshots
+            evidence/diagnostics
+            evidence/selected-device.txt
           if-no-files-found: warn
           retention-days: 14
