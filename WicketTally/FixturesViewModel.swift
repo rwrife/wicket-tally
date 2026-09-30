@@ -89,6 +89,38 @@ final class FixturesViewModel {
 
     func team(_ id: TeamID) -> TeamRecord? { teams.first { $0.id == id } }
     func ground(_ id: GroundID) -> GroundRecord? { grounds.first { $0.id == id } }
+    var scoringStore: WicketStore? { store }
+
+    /// Builds league statistics from the persisted ledgers plus the stored
+    /// manual-points audit. Recomputed on demand so it always reflects the
+    /// latest scoring and override edits.
+    func leagueStats(for leagueID: LeagueID) throws -> LeagueStats {
+        let store = try requiredStore()
+        let leagueFixtures = fixtures.filter { $0.leagueID == leagueID }
+        let statsFixtures = try leagueFixtures.map { fixture in
+            let session = try store.scoringSession(fixtureID: fixture.id)
+            return StatsFixture(
+                id: fixture.id,
+                homeTeamID: fixture.homeTeamID,
+                awayTeamID: fixture.awayTeamID,
+                rules: session.rules,
+                ledger: session.ledger,
+                playerIDs: fixture.participatingPlayerIDs
+            )
+        }
+        let leagueTeams = teams.filter { $0.leagueID == leagueID }.map(\.id)
+        let leaguePlayers = Set(leagueFixtures.flatMap(\.participatingPlayerIDs))
+        return try StatsDerivation.derive(
+            fixtures: statsFixtures,
+            teamIDs: leagueTeams,
+            playerIDs: Array(leaguePlayers),
+            manualPoints: try store.listPointsOverrides(leagueID: leagueID)
+        )
+    }
+
+    func savePointsOverride(_ override: StandingsPointsOverride, leagueID: LeagueID) throws {
+        try requiredStore().setPointsOverride(leagueID: leagueID, override: override)
+    }
 
     func createGround(name: String) throws -> GroundRecord {
         let ground = try requiredStore().createGround(name: name)
@@ -157,6 +189,13 @@ final class FixturesViewModel {
     }
 
     func report(_ error: Error) { errorMessage = message(for: error) }
+
+    /// Standings failures are reported verbatim rather than folded into the
+    /// generic fixture-save message: a derivation or store fault here means the
+    /// numbers cannot be trusted, so the cause must stay visible.
+    func reportStatsFailure(_ error: Error, league: String) {
+        errorMessage = "Standings for \(league) could not be derived: \(error.localizedDescription)"
+    }
 
     private func requiredStore() throws -> WicketStore {
         guard let store else { throw WicketStoreError.recordNotFound }

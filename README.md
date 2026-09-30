@@ -2,7 +2,7 @@
 
 **Wicket Tally** is a local-first iPhone app for scheduling and scoring cricket matches — designed first for the sunny village ground and the weekend gully league. Huge sun-proof controls, glanceable scores from across the pitch, and a bold Indian street-cricket look. No accounts, no cloud, no subscriptions.
 
-> Skeleton landed (issue #1): native iPhone app target + WicketKit/WicketStore packages + pinned CI policy gates. Feature implementation is still pending — see Current status.
+> Native iPhone app with local scoring, fixtures, statistics, backup controls, and an Indica appearance system. The release candidate and outdoor usability checks still require Apple-runner and human evidence — see Current status.
 
 ## Overview
 
@@ -60,17 +60,21 @@ Wicket Tally puts the whole match day on one offline iPhone: fixtures, teams, to
 
 ## Privacy, permissions, and data storage
 
-All data lives in a local database on the device. No network calls, no analytics, no ad SDKs — enforced by a zero-network CI gate. Notifications are local-only fixture reminders (optional). Camera/Photo access is never requested; exports go through the system share sheet and Files. Team/player names are user-entered text; the app stores only what the user types, and exports are user-initiated and previewable before replace/restore.
+All data lives in a local SQLite database on the device. No network calls, accounts, analytics, or ad SDKs are used — enforced by a zero-network CI gate. Notifications are local-only fixture reminders (optional), and Camera/Photo access is never requested.
+
+Users can create a versioned JSON backup of the whole database or line-oriented CSV exports for scorecards, standings, and player stats. Export is always user-initiated through the system Files/share interface; Wicket Tally never uploads exported data. Restore reads a user-picked JSON file, previews its league/team/player/fixture and total record counts, and replaces local records only after explicit confirmation in one atomic database transaction. Cancelling the preview changes nothing.
+
+Archiving only hides a record and does not delete it. Existing per-league deletion shows its cascade preview before removing that league and its children. Wiping all user data requires the exact typed confirmation `DELETE ALL DATA`; database schema and migration metadata remain so the app can immediately create fresh records. Team/player names and other exported content are user-entered data, so users should choose their share destination accordingly.
 
 ## Current status and milestones
 
-Skeleton landed (issue #1): an iPhone-only SwiftUI app target (`com.infinityball.wickettally`), the `WicketKit` package (pure Swift 6 domain namespace + `WicketStore` GRDB migration scaffold), and CI that runs package unit tests, the zero-network and platform-policy grep gates, and a pinned-Xcode simulator build on every PR. No user-facing features exist yet — the scorer, scheduling, and stats screens are still ahead.
+The app has an iPhone-only SwiftUI target (`com.infinityball.wickettally`), local fixtures and team setup, persisted match ledgers with correction-aware scoring, gully presets, derived standings and scorecards, JSON backup/restore, CSV exports, and skinnable Indica themes. The scoring layout and direct-sunlight appearance still need human field verification and simulator UI-test evidence. Signed TestFlight delivery is pending a run on the exact pinned Xcode with App Store Connect credentials; no TestFlight build has been claimed.
 
-1. M1: Domain core (`WicketKit`) + store + CI skeleton — **CI skeleton done (issue #1)**; domain core in progress
-2. M2: League/team/fixture setup
-3. M3: Outdoor ball-by-ball scorer + glance mode
-4. M4: Standings, stats, and export
-5. M5: Design system polish (sunlight themes + Indian-flair skins) → TestFlight
+1. M1: Domain core (`WicketKit`) + store + CI skeleton — implemented; pinned Apple-runner evidence pending
+2. M2: League/team/fixture setup — implemented
+3. M3: Outdoor ball-by-ball scorer + glance mode — implemented; field and UI checks pending
+4. M4: Standings, stats, and export — implemented; CI evidence pending
+5. M5: Indica themes and TestFlight — themes implemented; human visual audit and signed upload pending
 
 ## Development / build quickstart
 
@@ -78,8 +82,8 @@ Skeleton landed (issue #1): an iPhone-only SwiftUI app target (`com.infinityball
 - `TARGETED_DEVICE_FAMILY = 1` in every app-target build configuration (project-level and target-level, Debug and Release); CI asserts it pre-build (grep) and post-build (`UIDeviceFamily == [1]` in the built `Info.plist`).
 - Bundle id `com.infinityball.wickettally` (registered in App Store Connect); CI enforces the `com.infinityball.` prefix.
 - Open `WicketTally.xcodeproj` in the pinned Xcode and build the `WicketTally` scheme for an iPhone simulator, or run the domain/store tests headlessly with `swift test --package-path Packages/WicketKit` (needs system SQLite headers on Linux, e.g. `libsqlite3-dev`).
-- CI policy gates: `scripts/check_zero_network.sh` (empty allowlist — any URLSession/Network usage fails) and `scripts/check_platform_policy.sh` (no Flutter/React Native/Expo/Kotlin Multiplatform/.NET MAUI/Unity references, bundle-id prefix, iPhone-only device family).
-- Signing material (`*.p8`, `*.p12`, `*.mobileprovision`) is gitignored; CI asserts this with `git check-ignore`. App Store Connect secrets (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, `ASC_TEAM_ID`) are wired later via GitHub Actions secret names only.
+- CI policy gates: `scripts/check_zero_network.sh` (empty allowlist), `scripts/check_platform_policy.sh` (native iPhone-only bundle policy), and `scripts/check_indica_tokens.sh` (feature-view theme tokens). Run `swift test --package-path Packages/IndicaTheme` to audit theme contrast.
+- Signing material (`*.p8`, `*.p12`, `*.mobileprovision`) is gitignored; CI asserts this with `git check-ignore`. Release candidate steps and the manual TestFlight evidence gate are in `docs/release/`; the workflow uses the secret names `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`, and `ASC_TEAM_ID` without storing their values.
 
 ## License
 

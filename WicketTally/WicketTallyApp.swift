@@ -10,9 +10,40 @@ import WicketStore
 /// package sources — CI enforces an empty-allowlist scan.
 @main
 struct WicketTallyApp: App {
+    @State private var dataGeneration = 0
+    @State private var showDataRefresh = false
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AppHome(onDataChanged: {
+                dataGeneration += 1
+                showDataRefresh = true
+            })
+                .id(dataGeneration)
+                .alert("Local data updated", isPresented: $showDataRefresh) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text("Your views now show the restored or cleared records.")
+                }
+        }
+    }
+}
+
+private struct AppHome: View {
+    @State private var model = SetupViewModel.live()
+    let onDataChanged: () -> Void
+
+    var body: some View {
+        ContentView(model: model) {
+            if let store = model.dataStore {
+                StatsDashboardView(store: store)
+                    .tabItem { Label("Stats", systemImage: "chart.bar") }
+
+                NavigationStack {
+                    BackupSettingsView(store: store, onDataChanged: onDataChanged)
+                }
+                .tabItem { Label("Data", systemImage: "externaldrive") }
+            }
         }
     }
 }

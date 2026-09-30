@@ -16,7 +16,7 @@ PROHIBITED_PATTERNS=(
   'Flutter'
   'ReactNative'
   'React[[:space:]]+Native'
-  'Expo'
+  '(^|[^[:alnum:]_])Expo([^[:alnum:]_]|$)'
   'KotlinMultiplatform'
   'Kotlin[[:space:]]+Multiplatform'
   '\.NET[[:space:]]+MAUI'

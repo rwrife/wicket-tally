@@ -9,6 +9,20 @@ public enum WicketStoreError: Error, Equatable, Sendable {
     case parentNotFound
     case recordNotFound
     case confirmationStale
+    case scoringConflict
+    /// A stored configuration blob could not be decoded. Never swallowed: a
+    /// corrupt league preset surfaces instead of silently reverting to defaults.
+    case malformedConfiguration
+}
+
+public struct PersistedScoringSession: Sendable, Equatable {
+    public let rules: MatchRules
+    public let ledger: MatchLedger
+
+    public init(rules: MatchRules, ledger: MatchLedger) {
+        self.rules = rules
+        self.ledger = ledger
+    }
 }
 
 /// Dates are persisted as integer epoch-milliseconds so that a record written
@@ -123,19 +137,83 @@ public struct WicketStore: Sendable {
             }
             try db.create(index: "fixture_players_on_player_id", on: "fixture_players", columns: ["player_id"])
         }
+        migrator.registerMigration("v3") { db in
+            try db.create(table: "match_rules") { table in
+                table.column("fixture_id", .text).notNull().primaryKey()
+                    .references("fixtures", onDelete: .cascade)
+                table.column("overs_per_innings", .integer).notNull()
+                table.column("balls_per_over", .integer).notNull()
+                table.column("max_wickets", .integer).notNull()
+            }
+
+            try db.create(table: "match_events") { table in
+                table.column("id", .text).notNull().primaryKey()
+                table.column("fixture_id", .text).notNull()
+                    .references("fixtures", onDelete: .cascade)
+                table.column("sequence", .integer).notNull()
+                table.column("payload", .blob).notNull()
+                table.uniqueKey(["fixture_id", "sequence"])
+            }
+            try db.create(index: "match_events_on_fixture", on: "match_events", columns: ["fixture_id", "sequence"])
+        }
+        migrator.registerMigration("v4") { db in
+            try db.alter(table: "match_rules") { table in
+                table.add(column: "rules_payload", .blob)
+            }
+        }
+        migrator.registerMigration("v5") { db in
+            try db.alter(table: "leagues") { table in
+                table.add(column: "rule_preset_json", .text)
+            }
+        }
+        migrator.registerMigration("v6") { db in
+            // Append-only audit: every override a user records is kept, and the
+            // standings projection reads only the latest row per team.
+            try db.create(table: "standings_points_overrides") { table in
+                table.autoIncrementedPrimaryKey("id")
+                table.column("league_id", .text).notNull()
+                    .references("leagues", onDelete: .cascade)
+                table.column("team_id", .text).notNull()
+                    .references("teams", onDelete: .cascade)
+                table.column("points", .integer).notNull()
+                table.column("reason", .text).notNull()
+                table.column("provenance", .text).notNull()
+                table.column("recorded_at_ms", .integer).notNull()
+            }
+            try db.create(
+                index: "standings_points_overrides_on_league",
+                on: "standings_points_overrides",
+                columns: ["league_id", "team_id", "id"]
+            )
+        }
         return migrator
     }
 
     public static func removeV1Schema(_ db: Database) throws {
+        if try db.tableExists("standings_points_overrides") {
+            try removeV6Schema(db)
+        }
         try db.drop(table: "players")
         try db.drop(table: "teams")
         try db.drop(table: "leagues")
     }
 
     public static func removeV2Schema(_ db: Database) throws {
+        if try db.tableExists("match_events") {
+            try removeV3Schema(db)
+        }
         try db.drop(table: "fixture_players")
         try db.drop(table: "fixtures")
         try db.drop(table: "grounds")
+    }
+
+    public static func removeV3Schema(_ db: Database) throws {
+        try db.drop(table: "match_events")
+        try db.drop(table: "match_rules")
+    }
+
+    public static func removeV6Schema(_ db: Database) throws {
+        try db.drop(table: "standings_points_overrides")
     }
 
     public static func open(at url: URL) throws -> WicketStore {
@@ -228,6 +306,132 @@ public struct WicketStore: Sendable {
 
     public func league(id: LeagueID) throws -> LeagueRecord? {
         try db.read { database in try league(id: id, in: database) }
+    }
+
+    /// The league's configured casual rule preset, or `.standard` when the
+    /// league has never been configured. Malformed stored JSON throws rather
+    /// than quietly degrading to defaults.
+    public func rulePreset(for leagueID: LeagueID) throws -> RulePreset {
+        try db.read { database in
+            guard try league(id: leagueID, in: database) != nil else {
+                throw WicketStoreError.recordNotFound
+            }
+            let json = try String.fetchOne(
+                database,
+                sql: "SELECT rule_preset_json FROM leagues WHERE id = ?",
+                arguments: [leagueID.rawValue]
+            )
+            // Only SQL NULL means "unconfigured". An empty string cannot be a
+            // valid encoded preset, so it is corruption and must surface.
+            guard let json else { return .standard }
+            guard !json.isEmpty,
+                  let data = json.data(using: .utf8),
+                  let preset = try? JSONDecoder().decode(RulePreset.self, from: data)
+            else { throw WicketStoreError.malformedConfiguration }
+            return preset
+        }
+    }
+
+    /// Stores the league's preset for *future* match creation only. Existing
+    /// matches keep the rules snapshot copied into their own header.
+    public func setRulePreset(_ preset: RulePreset, for leagueID: LeagueID) throws {
+        let payload = try JSONEncoder().encode(preset)
+        guard let json = String(data: payload, encoding: .utf8) else {
+            throw WicketStoreError.malformedConfiguration
+        }
+        try db.write { database in
+            guard try league(id: leagueID, in: database) != nil else {
+                throw WicketStoreError.recordNotFound
+            }
+            try database.execute(
+                sql: "UPDATE leagues SET rule_preset_json = ?, updated_at_ms = ? WHERE id = ?",
+                arguments: [json, Date().truncatedToMilliseconds.millisecondsSince1970, leagueID.rawValue]
+            )
+        }
+    }
+
+    /// The effective manual points overrides for a league: the most recently
+    /// recorded row per team. Earlier rows stay in the table as audit history,
+    /// so the standings projection never sees duplicates for one team.
+    public func listPointsOverrides(leagueID: LeagueID) throws -> [StandingsPointsOverride] {
+        try db.read { database in
+            guard try league(id: leagueID, in: database) != nil else {
+                throw WicketStoreError.recordNotFound
+            }
+            let rows = try Row.fetchAll(
+                database,
+                sql: """
+                SELECT o.* FROM standings_points_overrides o
+                JOIN (
+                    SELECT team_id, MAX(id) AS latest
+                    FROM standings_points_overrides
+                    WHERE league_id = ?
+                    GROUP BY team_id
+                ) newest ON o.team_id = newest.team_id AND o.id = newest.latest
+                ORDER BY o.team_id
+                """,
+                arguments: [leagueID.rawValue]
+            )
+            return try rows.map(decodePointsOverride)
+        }
+    }
+
+    /// The full append-only audit trail, oldest first, for showing who changed
+    /// a team's points and why.
+    public func pointsOverrideHistory(leagueID: LeagueID) throws -> [StandingsPointsOverride] {
+        try db.read { database in
+            guard try league(id: leagueID, in: database) != nil else {
+                throw WicketStoreError.recordNotFound
+            }
+            let rows = try Row.fetchAll(
+                database,
+                sql: """
+                SELECT * FROM standings_points_overrides
+                WHERE league_id = ? ORDER BY id
+                """,
+                arguments: [leagueID.rawValue]
+            )
+            return try rows.map(decodePointsOverride)
+        }
+    }
+
+    /// Appends a new override row. Never updates or deletes an earlier row, so
+    /// the correction history of a user-owned points decision is preserved.
+    public func setPointsOverride(
+        leagueID: LeagueID,
+        override: StandingsPointsOverride
+    ) throws {
+        // Revalidate: a decoded value can carry blanks the initializer rejects.
+        _ = try StandingsPointsOverride(
+            teamID: override.teamID,
+            points: override.points,
+            reason: override.reason,
+            provenance: override.provenance,
+            recordedAt: override.recordedAt
+        )
+        try db.write { database in
+            guard try league(id: leagueID, in: database) != nil else {
+                throw WicketStoreError.recordNotFound
+            }
+            guard let team = try team(id: override.teamID, in: database),
+                  team.leagueID == leagueID
+            else { throw WicketStoreError.parentNotFound }
+            try database.execute(
+                sql: """
+                INSERT INTO standings_points_overrides
+                    (league_id, team_id, points, reason, provenance, recorded_at_ms)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    leagueID.rawValue,
+                    override.teamID.rawValue,
+                    override.points,
+                    override.reason,
+                    override.provenance,
+                    override.recordedAt.truncatedToMilliseconds.millisecondsSince1970,
+                ]
+            )
+        }
     }
 
     public func previewLeagueDeletion(id: LeagueID) throws -> LeagueDeletionPreview {
@@ -671,6 +875,153 @@ public struct WicketStore: Sendable {
         try db.read { database in try fixture(id: id, in: database) }
     }
 
+    // MARK: - Match scoring ledger
+
+    /// Loads the complete append-only ledger for a fixture. Rules default to
+    /// T20 until explicitly selected or the first event is appended.
+    public func scoringSession(fixtureID: FixtureID) throws -> PersistedScoringSession {
+        try db.read { database in
+            guard try fixture(id: fixtureID, in: database) != nil else {
+                throw WicketStoreError.recordNotFound
+            }
+
+            let rules: MatchRules
+            if let row = try Row.fetchOne(
+                database,
+                sql: "SELECT * FROM match_rules WHERE fixture_id = ?",
+                arguments: [fixtureID.rawValue]
+            ) {
+                let payload: Data? = row["rules_payload"]
+                if let payload {
+                    rules = try JSONDecoder().decode(MatchRules.self, from: payload)
+                } else {
+                    rules = MatchRules(
+                        oversPerInnings: row["overs_per_innings"],
+                        ballsPerOver: row["balls_per_over"],
+                        maxWickets: row["max_wickets"]
+                    )
+                }
+            } else {
+                rules = try unconfiguredRules(fixtureID: fixtureID, in: database)
+            }
+
+            let rows = try Row.fetchAll(
+                database,
+                sql: "SELECT payload FROM match_events WHERE fixture_id = ? ORDER BY sequence ASC",
+                arguments: [fixtureID.rawValue]
+            )
+            let decoder = JSONDecoder()
+            let events = try rows.map { row in
+                try decoder.decode(MatchEvent.self, from: row["payload"] as Data)
+            }
+            return PersistedScoringSession(rules: rules, ledger: MatchLedger(events: events))
+        }
+    }
+
+    /// Match rules become immutable once scoring begins so replay cannot
+    /// reinterpret an already persisted partial innings.
+    public func setMatchRules(_ rules: MatchRules, fixtureID: FixtureID) throws {
+        try db.write { database in
+            guard try fixture(id: fixtureID, in: database) != nil else {
+                throw WicketStoreError.recordNotFound
+            }
+            let eventCount = try Int.fetchOne(
+                database,
+                sql: "SELECT COUNT(*) FROM match_events WHERE fixture_id = ?",
+                arguments: [fixtureID.rawValue]
+            ) ?? 0
+            guard eventCount == 0 else {
+                throw WicketStoreError.scoringConflict
+            }
+            try database.execute(
+                sql: """
+                INSERT OR REPLACE INTO match_rules
+                    (fixture_id, overs_per_innings, balls_per_over, max_wickets, rules_payload)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    fixtureID.rawValue,
+                    rules.oversPerInnings,
+                    rules.ballsPerOver,
+                    rules.maxWickets,
+                    try JSONEncoder().encode(rules),
+                ]
+            )
+        }
+    }
+
+    /// Appends exactly one event at the next sequence. The sequence guard
+    /// prevents two stale scorer views from silently forking the local ledger.
+    public func appendScoringEvent(
+        _ event: MatchEvent,
+        fixtureID: FixtureID,
+        rules: MatchRules
+    ) throws {
+        try db.write { database in
+            guard try fixture(id: fixtureID, in: database) != nil else {
+                throw WicketStoreError.recordNotFound
+            }
+
+            if let row = try Row.fetchOne(
+                database,
+                sql: "SELECT * FROM match_rules WHERE fixture_id = ?",
+                arguments: [fixtureID.rawValue]
+            ) {
+                let payload: Data? = row["rules_payload"]
+                let persistedRules: MatchRules
+                if let payload {
+                    persistedRules = try JSONDecoder().decode(MatchRules.self, from: payload)
+                } else {
+                    persistedRules = MatchRules(
+                        oversPerInnings: row["overs_per_innings"],
+                        ballsPerOver: row["balls_per_over"],
+                        maxWickets: row["max_wickets"]
+                    )
+                }
+                guard persistedRules == rules else {
+                    throw WicketStoreError.scoringConflict
+                }
+            } else {
+                try database.execute(
+                    sql: """
+                    INSERT INTO match_rules
+                        (fixture_id, overs_per_innings, balls_per_over, max_wickets, rules_payload)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    arguments: [
+                        fixtureID.rawValue,
+                        rules.oversPerInnings,
+                        rules.ballsPerOver,
+                        rules.maxWickets,
+                        try JSONEncoder().encode(rules),
+                    ]
+                )
+            }
+
+            let lastSequence = try Int.fetchOne(
+                database,
+                sql: "SELECT MAX(sequence) FROM match_events WHERE fixture_id = ?",
+                arguments: [fixtureID.rawValue]
+            ) ?? 0
+            guard event.sequence == lastSequence + 1 else {
+                throw WicketStoreError.scoringConflict
+            }
+
+            try database.execute(
+                sql: """
+                INSERT INTO match_events (id, fixture_id, sequence, payload)
+                VALUES (?, ?, ?, ?)
+                """,
+                arguments: [
+                    event.id.rawValue.uuidString.lowercased(),
+                    fixtureID.rawValue,
+                    event.sequence,
+                    try JSONEncoder().encode(event),
+                ]
+            )
+        }
+    }
+
     public func conflicts(for candidate: FixtureRecord) throws -> [FixtureConflict] {
         let all = try listFixtures()
         return FixtureConflictDetector.conflicts(for: candidate, among: all)
@@ -682,6 +1033,41 @@ public struct WicketStore: Sendable {
         let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { throw WicketStoreError.invalidName }
         return value
+    }
+
+    /// Rules for a match whose header has not been written yet: a copy of the
+    /// owning league's preset. The copy is frozen into `match_rules` as soon as
+    /// rules are set or the first ball is appended, so later league edits only
+    /// affect future matches and replay never reads mutable league config.
+    private func unconfiguredRules(fixtureID: FixtureID, in database: Database) throws -> MatchRules {
+        let leagueIDString = try String.fetchOne(
+            database,
+            sql: "SELECT league_id FROM fixtures WHERE id = ?",
+            arguments: [fixtureID.rawValue]
+        )
+        guard let leagueIDString else { return .t20 }
+        let json = try String.fetchOne(
+            database,
+            sql: "SELECT rule_preset_json FROM leagues WHERE id = ?",
+            arguments: [leagueIDString]
+        )
+        guard let json else { return .t20 }
+        guard !json.isEmpty,
+              let data = json.data(using: .utf8),
+              let preset = try? JSONDecoder().decode(RulePreset.self, from: data)
+        else { throw WicketStoreError.malformedConfiguration }
+        return preset.rules
+    }
+
+    private func decodePointsOverride(_ row: Row) throws -> StandingsPointsOverride {
+        let milliseconds: Int64 = row["recorded_at_ms"]
+        return try StandingsPointsOverride(
+            teamID: TeamID(row["team_id"]),
+            points: row["points"],
+            reason: row["reason"],
+            provenance: row["provenance"],
+            recordedAt: Date(millisecondsSince1970: milliseconds)
+        )
     }
 
     private func league(id: LeagueID, in database: Database) throws -> LeagueRecord? {
@@ -856,11 +1242,36 @@ public struct WicketStore: Sendable {
             """,
             arguments: [id.rawValue]
         ) ?? 0
+        let fixtureCount = try Int.fetchOne(
+            database,
+            sql: "SELECT COUNT(*) FROM fixtures WHERE league_id = ?",
+            arguments: [id.rawValue]
+        ) ?? 0
+        // Scoring events and the points audit cascade away with the league, so
+        // the confirmation must show them or a user could destroy a scored
+        // season believing only teams were at stake.
+        let scoringEventCount = try Int.fetchOne(
+            database,
+            sql: """
+            SELECT COUNT(*) FROM match_events
+            JOIN fixtures ON fixtures.id = match_events.fixture_id
+            WHERE fixtures.league_id = ?
+            """,
+            arguments: [id.rawValue]
+        ) ?? 0
+        let pointsOverrideCount = try Int.fetchOne(
+            database,
+            sql: "SELECT COUNT(*) FROM standings_points_overrides WHERE league_id = ?",
+            arguments: [id.rawValue]
+        ) ?? 0
         return LeagueDeletionPreview(
             leagueID: id,
             leagueName: league.name,
             teamCount: teamCount,
-            playerCount: playerCount
+            playerCount: playerCount,
+            fixtureCount: fixtureCount,
+            scoringEventCount: scoringEventCount,
+            pointsOverrideCount: pointsOverrideCount
         )
     }
 

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import WicketKit
 
@@ -63,6 +64,21 @@ struct SetupModelsTests {
 
         let plural = LeagueDeletionPreview(leagueID: "l5", leagueName: "Big Cup", teamCount: 3, playerCount: 12)
         #expect(plural.summary == "Delete Big Cup, 3 teams, and 12 players")
+
+        let season = LeagueDeletionPreview(
+            leagueID: "l6", leagueName: "Season", teamCount: 2, playerCount: 0,
+            fixtureCount: 1, scoringEventCount: 8, pointsOverrideCount: 2
+        )
+        #expect(season.summary == "Delete Season, 2 teams, 1 fixture, 8 scoring events, and 2 points overrides")
+    }
+
+    @Test("older deletion previews decode without newer cascade counts")
+    func oldLeagueDeletionPreviewDecodes() throws {
+        let oldJSON = #"{"leagueID":{"rawValue":"l1"},"leagueName":"Old","teamCount":1,"playerCount":2}"#
+        let preview = try JSONDecoder().decode(LeagueDeletionPreview.self, from: Data(oldJSON.utf8))
+        #expect(preview.fixtureCount == 0)
+        #expect(preview.scoringEventCount == 0)
+        #expect(preview.pointsOverrideCount == 0)
     }
 
     @Test("team deletion preview summary covers zero, singular, and plural children")

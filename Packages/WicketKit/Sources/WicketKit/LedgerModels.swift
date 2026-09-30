@@ -54,11 +54,26 @@ public struct WicketEvent: Sendable, Codable, Equatable {
     public let kind: WicketKind
     public let dismissed: PlayerID
     public let fielder: PlayerID?
+    /// Explicit house-rule catch recording; never inferred from a fielder.
+    public let isOneHandCatch: Bool
 
-    public init(kind: WicketKind, dismissed: PlayerID, fielder: PlayerID? = nil) {
+    public init(kind: WicketKind, dismissed: PlayerID, fielder: PlayerID? = nil, isOneHandCatch: Bool = false) {
         self.kind = kind
         self.dismissed = dismissed
         self.fielder = fielder
+        self.isOneHandCatch = isOneHandCatch
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, dismissed, fielder, isOneHandCatch
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(WicketKind.self, forKey: .kind)
+        dismissed = try container.decode(PlayerID.self, forKey: .dismissed)
+        fielder = try container.decodeIfPresent(PlayerID.self, forKey: .fielder)
+        isOneHandCatch = try container.decodeIfPresent(Bool.self, forKey: .isOneHandCatch) ?? false
     }
 }
 
@@ -129,7 +144,14 @@ public struct BallEvent: Sendable, Codable, Equatable {
     }
 
     public var countsAsWicket: Bool {
+        countsAsWicket(rules: .standard)
+    }
+
+    public func countsAsWicket(rules: MatchRules) -> Bool {
         guard let wicket else { return false }
+        if wicket.kind == .caught, wicket.isOneHandCatch, !rules.oneHandCatchAllowed {
+            return false
+        }
         guard let extra else { return true }
 
         switch extra.kind {
@@ -231,16 +253,56 @@ public struct MatchRules: Sendable, Codable, Equatable {
     public let oversPerInnings: Int
     public let ballsPerOver: Int
     public let maxWickets: Int
+    /// The immutable, user-owned contract copied into this match.
+    /// Absent in legacy payloads; the original three rule fields remain valid.
+    public let preset: RulePreset?
 
     public init(oversPerInnings: Int, ballsPerOver: Int = 6, maxWickets: Int = 10) {
         self.oversPerInnings = max(1, oversPerInnings)
         self.ballsPerOver = max(1, ballsPerOver)
         self.maxWickets = max(1, maxWickets)
+        self.preset = nil
+    }
+
+    public init(preset: RulePreset) {
+        self.oversPerInnings = preset.oversPerInnings
+        self.ballsPerOver = preset.ballsPerOver
+        self.maxWickets = preset.playersPerSide - 1
+        self.preset = preset
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case oversPerInnings, ballsPerOver, maxWickets, preset
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let overs = try container.decode(Int.self, forKey: .oversPerInnings)
+        let balls = try container.decode(Int.self, forKey: .ballsPerOver)
+        let wickets = try container.decode(Int.self, forKey: .maxWickets)
+        guard overs > 0, balls > 0, wickets > 0,
+              !overs.multipliedReportingOverflow(by: balls).overflow else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .oversPerInnings, in: container, debugDescription: "Invalid match rule limits."
+            )
+        }
+        if let preset = try container.decodeIfPresent(RulePreset.self, forKey: .preset) {
+            guard overs == preset.oversPerInnings, balls == preset.ballsPerOver,
+                  wickets == preset.playersPerSide - 1 else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .preset, in: container, debugDescription: "Preset and match rule limits disagree."
+                )
+            }
+            self.init(preset: preset)
+        } else {
+            self.init(oversPerInnings: overs, ballsPerOver: balls, maxWickets: wickets)
+        }
     }
 
     public static let t10 = MatchRules(oversPerInnings: 10, ballsPerOver: 6, maxWickets: 10)
     public static let t20 = MatchRules(oversPerInnings: 20, ballsPerOver: 6, maxWickets: 10)
     public static let odi = MatchRules(oversPerInnings: 50, ballsPerOver: 6, maxWickets: 10)
+    public static let standard = t20
 
     public var maxLegalDeliveriesPerInnings: Int {
         oversPerInnings * ballsPerOver
@@ -291,6 +353,10 @@ public struct InningsState: Sendable, Codable, Equatable {
     public let wickets: Int
     public let legalDeliveries: Int
     public let isComplete: Bool
+    /// Nil only for legacy state snapshots, which predate run-cut overs.
+    public let completedOvers: Int?
+    public let ballsInCurrentOver: Int?
+    public let runsInCurrentOver: Int?
 
     public init(
         number: Int,
@@ -299,7 +365,10 @@ public struct InningsState: Sendable, Codable, Equatable {
         runs: Int,
         wickets: Int,
         legalDeliveries: Int,
-        isComplete: Bool = false
+        isComplete: Bool = false,
+        completedOvers: Int? = nil,
+        ballsInCurrentOver: Int? = nil,
+        runsInCurrentOver: Int? = nil
     ) {
         self.number = number
         self.battingTeam = battingTeam
@@ -308,10 +377,25 @@ public struct InningsState: Sendable, Codable, Equatable {
         self.wickets = max(0, wickets)
         self.legalDeliveries = max(0, legalDeliveries)
         self.isComplete = isComplete
+        self.completedOvers = completedOvers
+        self.ballsInCurrentOver = ballsInCurrentOver
+        self.runsInCurrentOver = runsInCurrentOver
     }
 
     public var scoreline: String {
         "\(runs)/\(wickets)"
+    }
+
+    public func oversString(ballsPerOver: Int) -> String {
+        guard ballsPerOver > 0 else { return "unknown" }
+        return "\(completedOvers ?? (legalDeliveries / ballsPerOver)).\(ballsInCurrentOver ?? (legalDeliveries % ballsPerOver))"
+    }
+
+    /// Scheduled ball budget consumed, including unused balls in a cut over.
+    /// `legalDeliveries` remains the actual count for player statistics.
+    public func consumedBallBudget(ballsPerOver: Int) -> Int {
+        guard let completedOvers, let ballsInCurrentOver else { return legalDeliveries }
+        return completedOvers * ballsPerOver + ballsInCurrentOver
     }
 }
 

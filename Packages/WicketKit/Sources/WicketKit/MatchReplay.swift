@@ -59,18 +59,29 @@ struct MatchReplayEngine {
                 guard var innings = current else { continue }
 
                 innings.runs += ball.totalRuns
+                innings.runsInCurrentOver += ball.totalRuns
                 if ball.isLegalDelivery {
                     innings.legalDeliveries += 1
+                    innings.ballsInCurrentOver += 1
                 }
 
-                if ball.countsAsWicket {
+                if ball.countsAsWicket(rules: rules) {
                     innings.wickets += 1
                 }
 
-                if innings.legalDeliveries >= rules.maxLegalDeliveriesPerInnings {
+                let runCutReached = rules.maxRunsPerOver.map { innings.runsInCurrentOver >= $0 } ?? false
+                if innings.ballsInCurrentOver >= rules.ballsPerOver || runCutReached {
+                    innings.completedOvers += 1
+                    innings.ballsInCurrentOver = 0
+                    innings.runsInCurrentOver = 0
+                }
+                if innings.completedOvers >= rules.oversPerInnings {
                     innings.ended = true
                 }
                 if innings.wickets >= rules.maxWickets {
+                    innings.ended = true
+                }
+                if let cap = rules.inningsRunCap, innings.runs >= cap {
                     innings.ended = true
                 }
 
@@ -100,9 +111,16 @@ struct MatchReplayEngine {
                 if penalty.awardedToBatting {
                     innings.runs += penalty.runs
                 }
+                // Standalone penalties count toward the innings cap, but are
+                // not delivery runs and therefore do not consume an over.
+                if let cap = rules.inningsRunCap, innings.runs >= cap {
+                    innings.ended = true
+                }
                 if innings.number >= 2, let chased = completedInnings.first,
                    innings.runs >= chased.runs + 1 {
                     innings.ended = true
+                }
+                if innings.ended {
                     completedInnings.append(innings)
                     current = nil
                 } else {
@@ -135,6 +153,9 @@ struct MatchReplayEngine {
                 last.runs = max(0, last.runs + adj.runsDelta)
                 last.wickets = max(0, last.wickets + adj.wicketsDelta)
             }
+            if let cap = rules.inningsRunCap, last.runs >= cap {
+                last.ended = true
+            }
             completedInnings.append(last)
         }
 
@@ -146,7 +167,10 @@ struct MatchReplayEngine {
                 runs: acc.runs,
                 wickets: min(acc.wickets, rules.maxWickets),
                 legalDeliveries: min(acc.legalDeliveries, rules.maxLegalDeliveriesPerInnings),
-                isComplete: acc.ended
+                isComplete: acc.ended,
+                completedOvers: acc.completedOvers,
+                ballsInCurrentOver: acc.ballsInCurrentOver,
+                runsInCurrentOver: acc.runsInCurrentOver
             )
         }.sorted { $0.number < $1.number }
 
@@ -155,7 +179,7 @@ struct MatchReplayEngine {
                 innings: $0.number,
                 team: $0.battingTeam,
                 score: $0.scoreline,
-                overs: $0.legalDeliveries.cricketOversString(ballsPerOver: rules.ballsPerOver)
+                overs: $0.oversString(ballsPerOver: rules.ballsPerOver)
             )
         }
 
@@ -215,10 +239,11 @@ struct MatchReplayEngine {
         guard let active = innings.last else {
             return .unknown
         }
-        guard active.legalDeliveries > 0 else {
+        let usedBalls = active.consumedBallBudget(ballsPerOver: rules.ballsPerOver)
+        guard usedBalls > 0 else {
             return .unknown
         }
-        let overs = Double(active.legalDeliveries) / Double(rules.ballsPerOver)
+        let overs = Double(usedBalls) / Double(rules.ballsPerOver)
         guard overs > 0 else { return .unknown }
         return .known(Double(active.runs) / overs)
     }
@@ -233,7 +258,7 @@ struct MatchReplayEngine {
         let runsNeeded = target - second.runs
         guard runsNeeded > 0 else { return .known(0) }
 
-        let remainingBalls = rules.maxLegalDeliveriesPerInnings - second.legalDeliveries
+        let remainingBalls = rules.maxLegalDeliveriesPerInnings - second.consumedBallBudget(ballsPerOver: rules.ballsPerOver)
         guard remainingBalls > 0 else { return .unknown }
 
         let remainingOvers = Double(remainingBalls) / Double(rules.ballsPerOver)
@@ -246,7 +271,7 @@ struct MatchReplayEngine {
         guard case .inProgress = status else { return .unknown }
 
         let second = innings[1]
-        let remaining = rules.maxLegalDeliveriesPerInnings - second.legalDeliveries
+        let remaining = rules.maxLegalDeliveriesPerInnings - second.consumedBallBudget(ballsPerOver: rules.ballsPerOver)
         return remaining >= 0 ? .known(Double(remaining)) : .unknown
     }
 
@@ -268,5 +293,8 @@ private struct InningsAccumulator {
     var runs: Int = 0
     var wickets: Int = 0
     var legalDeliveries: Int = 0
+    var completedOvers: Int = 0
+    var ballsInCurrentOver: Int = 0
+    var runsInCurrentOver: Int = 0
     var ended: Bool = false
 }

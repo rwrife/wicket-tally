@@ -2,11 +2,46 @@ import SwiftUI
 import WicketKit
 import WicketStore
 
-struct ContentView: View {
+/// Root shell.
+///
+/// Integration seam (issue #9 follow-up): `StatsView` and `BackupSettingsView`
+/// both need caller-owned dependencies (`LeagueStats` / `WicketStore`) that the
+/// design-system pass deliberately does not construct. Instead of hardcoding
+/// those tabs here, the shell accepts extra tabs from the call site:
+///
+/// ```swift
+/// ContentView(
+///     model: .live(),
+///     additionalTabs: {
+///         NavigationStack { StatsView(stats: stats, teamNames: names) }
+///             .tabItem { Label("Stats", systemImage: "chart.bar") }
+///
+///         NavigationStack { BackupSettingsView(store: store) }
+///             .tabItem { Label("Settings", systemImage: "gear") }
+///     }
+/// )
+/// ```
+///
+/// Anything supplied here is placed after Setup and inherits the Indica theme,
+/// Dynamic Type clamp, and shared error alert automatically, so no wiring in
+/// this file changes when those screens land.
+struct ContentView<AdditionalTabs: View>: View {
     @State private var model: SetupViewModel
+    private let additionalTabs: AdditionalTabs
+    /// Indica skin selection. Persisted locally so a scorer who switched to
+    /// the Sunlight appearance keeps it across launches.
+    @AppStorage("indica.theme.selection") private var themeSelectionRaw = IndicaThemeSelection.automatic.rawValue
 
-    init(model: SetupViewModel = .live()) {
+    init(
+        model: SetupViewModel = .live(),
+        @ViewBuilder additionalTabs: () -> AdditionalTabs
+    ) {
         _model = State(initialValue: model)
+        self.additionalTabs = additionalTabs()
+    }
+
+    private var themeSelection: IndicaThemeSelection {
+        IndicaThemeSelection(rawValue: themeSelectionRaw) ?? .automatic
     }
 
     var body: some View {
@@ -15,7 +50,7 @@ struct ContentView: View {
                 .tabItem { Label("Fixtures", systemImage: "calendar") }
 
             NavigationStack {
-                LeaguesView(model: model)
+                LeaguesView(model: model, themeSelectionRaw: $themeSelectionRaw)
                     .navigationDestination(for: LeagueID.self) { leagueID in
                         LeagueTeamsView(model: model, leagueID: leagueID)
                     }
@@ -25,8 +60,12 @@ struct ContentView: View {
                     .navigationTitle("Setup")
             }
             .tabItem { Label("Setup", systemImage: "person.3") }
+
+            // Stats / Backup settings tabs are injected here by the call site.
+            additionalTabs
         }
         .dynamicTypeSize(.xSmall ... .accessibility5)
+        .indicaTheme(themeSelection)
         .alert(
             "Local data message",
             isPresented: Binding(
@@ -41,8 +80,17 @@ struct ContentView: View {
     }
 }
 
+extension ContentView where AdditionalTabs == EmptyView {
+    /// Shell with only the built-in Fixtures and Setup tabs.
+    init(model: SetupViewModel = .live()) {
+        self.init(model: model) { EmptyView() }
+    }
+}
+
 private struct LeaguesView: View {
+    @Environment(\.indicaTheme) private var theme
     @Bindable var model: SetupViewModel
+    @Binding var themeSelectionRaw: String
     @State private var showArchived = false
 
     @State private var draft: LeagueDraft?
@@ -55,6 +103,18 @@ private struct LeaguesView: View {
                     .accessibilityLabel("Show archived leagues")
                     .accessibilityHint("Includes archived leagues and tournaments in the list")
             }
+            .indicaRowBackground()
+
+            Section("Appearance") {
+                Picker("Theme", selection: $themeSelectionRaw) {
+                    ForEach(IndicaThemeSelection.allCases, id: \.rawValue) { option in
+                        Text(option.displayName).tag(option.rawValue)
+                    }
+                }
+                .accessibilityLabel("Theme")
+                .accessibilityHint("Switches between the standard, direct-sunlight and festive skins")
+            }
+            .indicaRowBackground()
 
             Section("Leagues and tournaments") {
                 ForEach(model.activeLeagues(showArchived: showArchived)) { league in
@@ -67,7 +127,7 @@ private struct LeaguesView: View {
                         } label: {
                             Label(league.isArchived ? "Unarchive" : "Archive", systemImage: league.isArchived ? "tray.and.arrow.up" : "archivebox")
                         }
-                        .tint(.indigo)
+                        .tint(theme.palette.accentSecondary.color)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
@@ -91,12 +151,15 @@ private struct LeaguesView: View {
 
                 if model.activeLeagues(showArchived: showArchived).isEmpty {
                     Text("No leagues yet")
-                        .foregroundStyle(.secondary)
+                        .indicaSecondaryText()
                         .accessibilityLabel("No leagues yet")
                         .accessibilityHint("Use Add league to create your first league or tournament")
                 }
             }
+            .indicaRowBackground()
         }
+        .indicaScreenBackground()
+        .indicaPrimaryText()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -157,12 +220,15 @@ private struct LeaguesView: View {
 }
 
 private struct LeagueTeamsView: View {
+    @Environment(\.indicaTheme) private var theme
     @Bindable var model: SetupViewModel
     let leagueID: LeagueID
 
     @State private var showArchived = false
     @State private var draft: TeamDraft?
     @State private var deletionPreview: TeamDeletionPreview?
+    @State private var rulePreset: RulePreset?
+    @State private var showingRuleEditor = false
 
     private var league: LeagueRecord? {
         model.leagues.first { $0.id == leagueID }
@@ -175,6 +241,7 @@ private struct LeagueTeamsView: View {
                     .accessibilityLabel("Show archived teams")
                     .accessibilityHint("Includes archived teams in this league")
             }
+            .indicaRowBackground()
 
             Section {
                 if let league {
@@ -183,13 +250,26 @@ private struct LeagueTeamsView: View {
                             .font(.headline)
                         Text(league.kind.displayName)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .indicaSecondaryText()
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("League \(league.name)")
                     .accessibilityValue(league.kind.displayName)
                 }
             }
+            .indicaRowBackground()
+
+            Section("Match rules") {
+                if let rulePreset {
+                    RulePresetHeader(rules: rulePreset.rules)
+                    Button("Edit league rules") { showingRuleEditor = true }
+                        .accessibilityHint("Changes rules for future matches; existing match rules stay unchanged")
+                } else {
+                    Text("League rules are unavailable")
+                        .indicaSecondaryText()
+                }
+            }
+            .indicaRowBackground()
 
             Section("Teams") {
                 ForEach(model.teams(for: leagueID, showArchived: showArchived)) { team in
@@ -202,7 +282,7 @@ private struct LeagueTeamsView: View {
                         } label: {
                             Label(team.isArchived ? "Unarchive" : "Archive", systemImage: team.isArchived ? "tray.and.arrow.up" : "archivebox")
                         }
-                        .tint(.indigo)
+                        .tint(theme.palette.accentSecondary.color)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
@@ -226,13 +306,21 @@ private struct LeagueTeamsView: View {
 
                 if model.teams(for: leagueID, showArchived: showArchived).isEmpty {
                     Text("No teams yet")
-                        .foregroundStyle(.secondary)
+                        .indicaSecondaryText()
                         .accessibilityLabel("No teams yet")
                 }
             }
+            .indicaRowBackground()
         }
+        .indicaScreenBackground()
+        .indicaPrimaryText()
         .navigationTitle("Teams")
-        .task { run { try model.reloadTeams(for: leagueID) } }
+        .task {
+            run {
+                try model.reloadTeams(for: leagueID)
+                rulePreset = try model.rulePreset(for: leagueID)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -259,6 +347,14 @@ private struct LeagueTeamsView: View {
                 }
             )
             .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showingRuleEditor) {
+            if let rulePreset {
+                RulePresetEditor(preset: rulePreset) { preset in
+                    try model.setRulePreset(preset, for: leagueID)
+                    self.rulePreset = preset
+                }
+            }
         }
         .alert(
             "Delete team?",
@@ -294,6 +390,7 @@ private struct LeagueTeamsView: View {
 }
 
 private struct TeamPlayersView: View {
+    @Environment(\.indicaTheme) private var theme
     @Bindable var model: SetupViewModel
     let teamID: TeamID
 
@@ -317,6 +414,7 @@ private struct TeamPlayersView: View {
                     .accessibilityLabel("Show archived players")
                     .accessibilityHint("Includes archived players on this team")
             }
+            .indicaRowBackground()
 
             Section {
                 if let team {
@@ -330,6 +428,7 @@ private struct TeamPlayersView: View {
                     .accessibilityValue(team.colour.displayName)
                 }
             }
+            .indicaRowBackground()
 
             Section("Players") {
                 ForEach(model.players(for: teamID, showArchived: showArchived)) { player in
@@ -340,7 +439,7 @@ private struct TeamPlayersView: View {
                             } label: {
                                 Label(player.isArchived ? "Unarchive" : "Archive", systemImage: player.isArchived ? "tray.and.arrow.up" : "archivebox")
                             }
-                            .tint(.indigo)
+                            .tint(theme.palette.accentSecondary.color)
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
@@ -363,11 +462,14 @@ private struct TeamPlayersView: View {
 
                 if model.players(for: teamID, showArchived: showArchived).isEmpty {
                     Text("No players yet")
-                        .foregroundStyle(.secondary)
+                        .indicaSecondaryText()
                         .accessibilityLabel("No players yet")
                 }
             }
+            .indicaRowBackground()
         }
+        .indicaScreenBackground()
+        .indicaPrimaryText()
         .navigationTitle("Players")
         .task { run { try model.reloadPlayers(for: teamID) } }
         .toolbar {
@@ -440,15 +542,11 @@ private struct LeagueRow: View {
                     .font(.headline)
                 Text(league.kind.displayName)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .indicaSecondaryText()
             }
             Spacer()
             if league.isArchived {
-                Text("Archived")
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(.secondary.opacity(0.2)))
+                IndicaStatusPill("Archived")
             }
         }
         .accessibilityElement(children: .ignore)
@@ -468,15 +566,11 @@ private struct TeamRow: View {
                     .font(.headline)
                 Text(team.colour.displayName)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .indicaSecondaryText()
             }
             Spacer()
             if team.isArchived {
-                Text("Archived")
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(.secondary.opacity(0.2)))
+                IndicaStatusPill("Archived")
             }
         }
         .accessibilityElement(children: .ignore)
@@ -495,15 +589,11 @@ private struct PlayerRow: View {
                     .font(.headline)
                 Text(player.role.displayName)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .indicaSecondaryText()
             }
             Spacer()
             if player.isArchived {
-                Text("Archived")
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(.secondary.opacity(0.2)))
+                IndicaStatusPill("Archived")
             }
         }
         .accessibilityElement(children: .ignore)
@@ -516,25 +606,7 @@ private struct TeamKitChip: View {
     let colour: TeamKitColour
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "tshirt.fill")
-                .font(.caption.bold())
-            Text(colour.displayName)
-                .font(.caption)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .foregroundStyle(colour.prefersLightForeground ? Color.white : Color.black)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(hexRGB: colour.hexRGB))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.black.opacity(0.18), lineWidth: 1)
-        )
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Jersey colour \(colour.displayName)")
+        IndicaTeamChip(kit: IndicaKitColour(colour), label: colour.displayName)
     }
 }
 
@@ -543,6 +615,7 @@ private struct LeagueEditorSheet: View {
     let onSave: (String, LeagueKind) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.indicaTheme) private var theme
     @State private var name: String
     @State private var kind: LeagueKind
 
@@ -566,6 +639,7 @@ private struct LeagueEditorSheet: View {
                     .textInputAutocapitalization(.words)
                     .accessibilityLabel("League name")
                     .accessibilityHint("Enter a local league or tournament name")
+                    .indicaRowBackground()
 
                 Picker("Type", selection: $kind) {
                     ForEach(LeagueKind.allCases, id: \.self) { option in
@@ -574,7 +648,10 @@ private struct LeagueEditorSheet: View {
                 }
                 .accessibilityLabel("League type")
                 .accessibilityHint("Choose league or tournament")
+                .indicaRowBackground()
             }
+            .indicaScreenBackground()
+            .indicaPrimaryText()
             .navigationTitle(draft.title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -597,6 +674,7 @@ private struct TeamEditorSheet: View {
     let onSave: (String, TeamKitColour) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.indicaTheme) private var theme
     @State private var name: String
     @State private var colour: TeamKitColour
 
@@ -620,6 +698,7 @@ private struct TeamEditorSheet: View {
                     .textInputAutocapitalization(.words)
                     .accessibilityLabel("Team name")
                     .accessibilityHint("Enter a local team name")
+                    .indicaRowBackground()
 
                 Section("Indica jersey colour") {
                     ForEach(TeamKitColour.allCases, id: \.self) { option in
@@ -631,7 +710,7 @@ private struct TeamEditorSheet: View {
                                 Spacer()
                                 if option == colour {
                                     Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.green)
+                                        .foregroundStyle(theme.palette.positive.color)
                                 }
                             }
                         }
@@ -641,7 +720,10 @@ private struct TeamEditorSheet: View {
                         .accessibilityValue(option == colour ? "Selected" : "Not selected")
                     }
                 }
+                .indicaRowBackground()
             }
+            .indicaScreenBackground()
+            .indicaPrimaryText()
             .navigationTitle(draft.title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -664,6 +746,7 @@ private struct PlayerEditorSheet: View {
     let onSave: (String, PlayerRole) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.indicaTheme) private var theme
     @State private var name: String
     @State private var role: PlayerRole
 
@@ -687,6 +770,7 @@ private struct PlayerEditorSheet: View {
                     .textInputAutocapitalization(.words)
                     .accessibilityLabel("Player name")
                     .accessibilityHint("Enter the player name")
+                    .indicaRowBackground()
 
                 Picker("Role", selection: $role) {
                     ForEach(PlayerRole.allCases, id: \.self) { option in
@@ -695,7 +779,10 @@ private struct PlayerEditorSheet: View {
                 }
                 .accessibilityLabel("Player role")
                 .accessibilityHint("Choose batting or bowling role tag")
+                .indicaRowBackground()
             }
+            .indicaScreenBackground()
+            .indicaPrimaryText()
             .navigationTitle(draft.title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -767,20 +854,6 @@ private enum PlayerDraft: Identifiable {
         case .create: return "New player"
         case .edit: return "Edit player"
         }
-    }
-}
-
-private extension Color {
-    init(hexRGB: String) {
-        let clean = hexRGB.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard clean.count == 6, let raw = Int(clean, radix: 16) else {
-            self = .gray
-            return
-        }
-        let red = Double((raw >> 16) & 0xFF) / 255.0
-        let green = Double((raw >> 8) & 0xFF) / 255.0
-        let blue = Double(raw & 0xFF) / 255.0
-        self = Color(red: red, green: green, blue: blue)
     }
 }
 

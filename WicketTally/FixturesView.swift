@@ -2,6 +2,11 @@ import SwiftUI
 import WicketKit
 
 struct FixturesView: View {
+    @Environment(\.indicaTheme) private var theme
+    @State private var statsLeague: LeagueRecord?
+    /// Held in parent state so saving an override recomputes in place instead
+    /// of rebuilding (and dismissing) the sheet.
+    @State private var leagueStats: LeagueStats?
     @State private var model: FixturesViewModel
     @State private var draft: FixtureEditorState?
     @State private var selectedConflict: [FixtureConflict] = []
@@ -16,8 +21,9 @@ struct FixturesView: View {
                 if model.fixtures.isEmpty {
                     Section {
                         Text("No fixtures yet")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.palette.textSecondary.color)
                     }
+                    .indicaRowBackground()
                 } else {
                     Section("Upcoming fixtures") {
                         ForEach(model.fixtures) { fixture in
@@ -26,7 +32,7 @@ struct FixturesView: View {
                                     TeamChip(team: model.team(fixture.homeTeamID))
                                     Text("vs")
                                         .font(.caption.bold())
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(theme.palette.textSecondary.color)
                                     TeamChip(team: model.team(fixture.awayTeamID))
                                 }
                                 Text(fixture.name)
@@ -35,21 +41,37 @@ struct FixturesView: View {
                                     .font(.subheadline)
                                 Label(model.ground(fixture.groundID)?.name ?? "Unknown ground", systemImage: "mappin.and.ellipse")
                                     .font(.subheadline)
+                                NavigationLink {
+                                    ScorerView(
+                                        fixture: fixture,
+                                        homeName: model.team(fixture.homeTeamID)?.name ?? "Home",
+                                        awayName: model.team(fixture.awayTeamID)?.name ?? "Away",
+                                        store: model.scoringStore
+                                    )
+                                } label: {
+                                    Label("Score match", systemImage: "cricket.ball.fill")
+                                        .font(.headline)
+                                        .frame(minHeight: 60)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityIdentifier("fixture.score.\(fixture.id.rawValue)")
+
+                                Button("Edit fixture") {
+                                    draft = .edit(fixture, FixtureDraft(
+                                        leagueID: fixture.leagueID,
+                                        name: fixture.name,
+                                        homeTeamID: fixture.homeTeamID,
+                                        awayTeamID: fixture.awayTeamID,
+                                        groundID: fixture.groundID,
+                                        startsAt: fixture.startsAt,
+                                        endsAt: fixture.endsAt,
+                                        reminder: fixture.reminder
+                                    ))
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityIdentifier("fixture.edit.\(fixture.id.rawValue)")
                             }
                             .padding(.vertical, 8)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                draft = .edit(fixture, FixtureDraft(
-                                    leagueID: fixture.leagueID,
-                                    name: fixture.name,
-                                    homeTeamID: fixture.homeTeamID,
-                                    awayTeamID: fixture.awayTeamID,
-                                    groundID: fixture.groundID,
-                                    startsAt: fixture.startsAt,
-                                    endsAt: fixture.endsAt,
-                                    reminder: fixture.reminder
-                                ))
-                            }
                             .swipeActions {
                                 Button(role: .destructive) {
                                     Task {
@@ -62,8 +84,10 @@ struct FixturesView: View {
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
+                                .indicaRowBackground()
                             }
                         }
+                        .indicaScreenBackground()
                     }
                 }
             }
@@ -79,6 +103,44 @@ struct FixturesView: View {
                     }
                     .disabled(bootstrapDraft() == nil)
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        ForEach(model.leagues) { league in
+                            Button(league.name) {
+                                // No silent fallback: a derivation or store
+                                // failure is surfaced instead of opening a
+                                // sheet with missing or stale numbers.
+                                do {
+                                    leagueStats = try model.leagueStats(for: league.id)
+                                    statsLeague = league
+                                } catch {
+                                    leagueStats = nil
+                                    model.reportStatsFailure(error, league: league.name)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label("Standings", systemImage: "list.number")
+                    }
+                    .disabled(model.leagues.isEmpty)
+                    .accessibilityIdentifier("fixtures.standings")
+                }
+            }
+            // Identity is the league, never the derived stats value, so a
+            // recomputation updates the sheet instead of dismissing it.
+            .sheet(item: $statsLeague, onDismiss: { leagueStats = nil }) { league in
+                leagueStatsSheet(for: league)
+            }
+            .alert(
+                "Fixtures",
+                isPresented: Binding(
+                    get: { model.errorMessage != nil && statsLeague == nil },
+                    set: { if !$0 { model.errorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { model.errorMessage = nil }
+            } message: {
+                Text(model.errorMessage ?? "")
             }
             .overlay(alignment: .bottom) {
                 if bootstrapDraft() == nil {
@@ -86,7 +148,7 @@ struct FixturesView: View {
                         .font(.footnote)
                         .multilineTextAlignment(.center)
                         .padding(12)
-                        .background(.thinMaterial, in: Capsule())
+                        .background(theme.palette.surfaceElevated.color, in: Capsule())
                         .padding(.bottom, 12)
                 }
             }
@@ -132,6 +194,48 @@ struct FixturesView: View {
         }
     }
 
+    @ViewBuilder
+    private func leagueStatsSheet(for league: LeagueRecord) -> some View {
+        if let stats = leagueStats {
+            StatsView(
+                stats: stats,
+                teamNames: Dictionary(
+                    uniqueKeysWithValues: model.teams.map { ($0.id, $0.name) }
+                ),
+                playerNames: Dictionary(
+                    uniqueKeysWithValues: model.players.map { ($0.id, $0.name) }
+                ),
+                fixtureNames: Dictionary(
+                    uniqueKeysWithValues: model.fixtures.map { ($0.id, $0.name) }
+                ),
+                savePointsOverride: { override in
+                    try model.savePointsOverride(override, leagueID: league.id)
+                    // Recompute synchronously: a throw here keeps the editor
+                    // open and reports the real cause, while success refreshes
+                    // the visible standings in place.
+                    do {
+                        leagueStats = try model.leagueStats(for: league.id)
+                    } catch {
+                        model.reportStatsFailure(error, league: league.name)
+                        throw error
+                    }
+                }
+            )
+        } else {
+            VStack(spacing: 12) {
+                Label("Standings unavailable", systemImage: "exclamationmark.triangle.fill")
+                    .font(.headline)
+                    .foregroundStyle(theme.palette.warning.color)
+                Text(model.errorMessage ?? "The standings could not be derived for \(league.name).")
+                    .font(.subheadline)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(theme.palette.textSecondary.color)
+            }
+            .padding(24)
+            .accessibilityIdentifier("fixtures.standingsError")
+        }
+    }
+
     private func bootstrapDraft() -> FixtureDraft? {
         guard let firstLeague = model.leagues.first else { return nil }
         let leagueTeams = model.teams.filter { $0.leagueID == firstLeague.id }
@@ -151,18 +255,23 @@ struct FixturesView: View {
 }
 
 private struct TeamChip: View {
+    @Environment(\.indicaTheme) private var theme
     let team: TeamRecord?
 
     var body: some View {
+        // Kit colours come from the theme's contrast-audited chip styles, so
+        // the foreground is legible on every skin including sunlight.
+        let style = theme.chipStyle(for: IndicaKitColour(team?.colour ?? .cricketRed))
         Text(team?.name ?? "Unknown")
             .font(.headline)
-            .foregroundStyle(.white)
+            .foregroundStyle(style.foreground.color)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .frame(minWidth: 140, minHeight: 60)
             .background(
                 RoundedRectangle(cornerRadius: 14)
-                    .fill(Color(hexRGB: team?.colour.hexRGB ?? "6B7280"))
+                    .fill(style.fill.color)
+                    .strokeBorder(style.stroke.color, lineWidth: 2)
             )
     }
 }
@@ -233,6 +342,7 @@ private struct FixtureEditorSheet: View {
         NavigationStack {
             Form {
                 TextField("Fixture name", text: $draft.name)
+                    .indicaRowBackground()
 
                 Picker("League", selection: Binding(
                     get: { draft.leagueID ?? leagues.first?.id ?? "" },
@@ -242,24 +352,28 @@ private struct FixtureEditorSheet: View {
                         Text(league.name).tag(league.id)
                     }
                 }
+                .indicaRowBackground()
 
                 Picker("Home team", selection: $draft.homeTeamID) {
                     ForEach(eligibleTeams) { team in
                         Text(team.name).tag(team.id)
                     }
                 }
+                .indicaRowBackground()
 
                 Picker("Away team", selection: $draft.awayTeamID) {
                     ForEach(eligibleTeams.filter { $0.id != draft.homeTeamID }) { team in
                         Text(team.name).tag(team.id)
                     }
                 }
+                .indicaRowBackground()
 
                 Picker("Ground", selection: $draft.groundID) {
                     ForEach(grounds) { ground in
                         Text(ground.name).tag(ground.id)
                     }
                 }
+                .indicaRowBackground()
                 .onAppear {
                     if draft.groundID.rawValue.isEmpty, let first = grounds.first {
                         draft.groundID = first.id
@@ -275,16 +389,22 @@ private struct FixtureEditorSheet: View {
                         }
                     }
                 }
+                .indicaRowBackground()
 
                 DatePicker("Starts", selection: $draft.startsAt)
+                    .indicaRowBackground()
                 DatePicker("Ends", selection: $draft.endsAt)
+                    .indicaRowBackground()
 
                 Picker("Reminder", selection: $draft.reminder) {
                     ForEach(FixtureReminder.allCases, id: \.self) { reminder in
                         Text(reminder.displayName).tag(reminder)
                     }
                 }
+                .indicaRowBackground()
             }
+            .indicaScreenBackground()
+            .indicaPrimaryText()
             .navigationTitle(state.title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -306,20 +426,6 @@ private struct FixtureEditorSheet: View {
             if let leagueID { return team.leagueID == leagueID }
             return true
         }
-    }
-}
-
-private extension Color {
-    init(hexRGB: String) {
-        let clean = hexRGB.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard clean.count == 6, let raw = Int(clean, radix: 16) else {
-            self = .gray
-            return
-        }
-        let red = Double((raw >> 16) & 0xFF) / 255.0
-        let green = Double((raw >> 8) & 0xFF) / 255.0
-        let blue = Double(raw & 0xFF) / 255.0
-        self = Color(red: red, green: green, blue: blue)
     }
 }
 

@@ -72,6 +72,9 @@ jobs:
       - name: Native platform + bundle policy gate
         run: bash scripts/check_platform_policy.sh
 
+      - name: Indica feature-view token gate
+        run: bash scripts/check_indica_tokens.sh
+
       - name: Gitignore keeps signing material out
         run: |
           set -euo pipefail
@@ -173,6 +176,12 @@ jobs:
 
       - name: Run package unit tests
         run: swift test --package-path Packages/WicketKit
+
+      - name: Indica contrast and token tests
+        run: swift test --package-path Packages/IndicaTheme
+
+      - name: Indica feature-view token gate
+        run: bash scripts/check_indica_tokens.sh
 
       - name: Build for iPhone simulator
         run: |

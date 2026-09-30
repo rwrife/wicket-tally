@@ -7,6 +7,7 @@ import WicketStore
 @Observable
 final class SetupViewModel {
     private let store: WicketStore?
+    var dataStore: WicketStore? { store }
 
     private(set) var leagues: [LeagueRecord] = []
     private(set) var teamsByLeague: [LeagueID: [TeamRecord]] = [:]
@@ -111,6 +112,14 @@ final class SetupViewModel {
         try requiredStore().deleteLeague(id: league.id, confirming: preview)
         teamsByLeague[league.id] = nil
         try reloadLeagues()
+    }
+
+    func rulePreset(for leagueID: LeagueID) throws -> RulePreset {
+        try requiredStore().rulePreset(for: leagueID)
+    }
+
+    func setRulePreset(_ preset: RulePreset, for leagueID: LeagueID) throws {
+        try requiredStore().setRulePreset(preset, for: leagueID)
     }
 
     func createTeam(leagueID: LeagueID, name: String, colour: TeamKitColour) throws {

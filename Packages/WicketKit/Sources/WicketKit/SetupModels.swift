@@ -185,12 +185,39 @@ public struct LeagueDeletionPreview: Sendable, Codable, Equatable {
     public let leagueName: String
     public let teamCount: Int
     public let playerCount: Int
+    public let fixtureCount: Int
+    public let scoringEventCount: Int
+    public let pointsOverrideCount: Int
 
-    public init(leagueID: LeagueID, leagueName: String, teamCount: Int, playerCount: Int) {
+    public init(
+        leagueID: LeagueID, leagueName: String, teamCount: Int, playerCount: Int,
+        fixtureCount: Int = 0, scoringEventCount: Int = 0, pointsOverrideCount: Int = 0
+    ) {
         self.leagueID = leagueID
         self.leagueName = leagueName
         self.teamCount = teamCount
         self.playerCount = playerCount
+        self.fixtureCount = fixtureCount
+        self.scoringEventCount = scoringEventCount
+        self.pointsOverrideCount = pointsOverrideCount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case leagueID, leagueName, teamCount, playerCount
+        case fixtureCount, scoringEventCount, pointsOverrideCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            leagueID: try values.decode(LeagueID.self, forKey: .leagueID),
+            leagueName: try values.decode(String.self, forKey: .leagueName),
+            teamCount: try values.decode(Int.self, forKey: .teamCount),
+            playerCount: try values.decode(Int.self, forKey: .playerCount),
+            fixtureCount: try values.decodeIfPresent(Int.self, forKey: .fixtureCount) ?? 0,
+            scoringEventCount: try values.decodeIfPresent(Int.self, forKey: .scoringEventCount) ?? 0,
+            pointsOverrideCount: try values.decodeIfPresent(Int.self, forKey: .pointsOverrideCount) ?? 0
+        )
     }
 
     /// Always 1 for a league preview; kept for a uniform "N leagues" phrasing
@@ -204,6 +231,15 @@ public struct LeagueDeletionPreview: Sendable, Codable, Equatable {
         }
         if playerCount > 0 {
             parts.append(playerCount == 1 ? "1 player" : "\(playerCount) players")
+        }
+        if fixtureCount > 0 {
+            parts.append(fixtureCount == 1 ? "1 fixture" : "\(fixtureCount) fixtures")
+        }
+        if scoringEventCount > 0 {
+            parts.append(scoringEventCount == 1 ? "1 scoring event" : "\(scoringEventCount) scoring events")
+        }
+        if pointsOverrideCount > 0 {
+            parts.append(pointsOverrideCount == 1 ? "1 points override" : "\(pointsOverrideCount) points overrides")
         }
         guard !parts.isEmpty else { return "Delete \(leagueName)" }
         if parts.count == 1 {
