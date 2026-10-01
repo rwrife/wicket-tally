@@ -243,7 +243,9 @@ struct ScorerView: View {
                 .accessibilityIdentifier("scorer.rulesSummary")
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Last over")
+                // The visible header carries the dots so VoiceOver, UI
+                // tests, and sun-glance users all read one stable string.
+                Text(lastOverLabel)
                     .font(.headline)
 
                 LazyVGrid(
@@ -264,7 +266,6 @@ struct ScorerView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
             .accessibilityIdentifier("scorer.lastOver")
         }
         .padding(16)
@@ -484,6 +485,13 @@ struct ScorerView: View {
         case let .known(rate): return rate.formatted(.number.precision(.fractionLength(2)))
         case .unknown: return "–"
         }
+    }
+
+    /// Stable VoiceOver + UI-test label for the last-over strip. Built
+    /// explicitly because the lazy dot grid may render only visible cells.
+    private var lastOverLabel: String {
+        let dots = model.lastOverDots.isEmpty ? "–" : model.lastOverDots.joined(separator: ", ")
+        return "Last over \(dots)"
     }
 
     private func extraLabel(_ kind: ExtraType) -> String {

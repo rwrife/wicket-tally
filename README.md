@@ -68,11 +68,11 @@ Archiving only hides a record and does not delete it. Existing per-league deleti
 
 ## Current status and milestones
 
-The app has an iPhone-only SwiftUI target (`com.infinityball.wickettally`), local fixtures and team setup, persisted match ledgers with correction-aware scoring, gully presets, derived standings and scorecards, JSON backup/restore, CSV exports, and skinnable Indica themes. The scoring layout and direct-sunlight appearance still need human field verification and simulator UI-test evidence. Signed TestFlight delivery is pending a run on the exact pinned Xcode with App Store Connect credentials; no TestFlight build has been claimed.
+The app has an iPhone-only SwiftUI target (`com.infinityball.wickettally`), local fixtures and team setup, persisted match ledgers with correction-aware scoring, gully presets, derived standings and scorecards, JSON backup/restore, CSV exports, and skinnable Indica themes. Apple CI runs an end-to-end scorer UI journey on the smallest available iOS 26 iPhone simulator and uploads the xcresult plus screenshots as evidence. Direct-sunlight legibility still needs human field verification — simulator evidence is not a field claim. Signed TestFlight delivery is pending a run on the exact pinned Xcode with App Store Connect credentials; no TestFlight build has been claimed.
 
 1. M1: Domain core (`WicketKit`) + store + CI skeleton — implemented; pinned Apple-runner evidence pending
 2. M2: League/team/fixture setup — implemented
-3. M3: Outdoor ball-by-ball scorer + glance mode — implemented; field and UI checks pending
+3. M3: Outdoor ball-by-ball scorer + glance mode — implemented; simulator UI journey on Apple CI; human field checks pending
 4. M4: Standings, stats, and export — implemented; CI evidence pending
 5. M5: Indica themes and TestFlight — themes implemented; human visual audit and signed upload pending
 

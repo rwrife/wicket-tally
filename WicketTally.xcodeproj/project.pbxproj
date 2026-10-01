@@ -14,6 +14,7 @@
 /* Begin PBXFileReference section */
 		AA00000000000000000000B1 /* WicketTally.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WicketTally.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA00000000000000000000B3 /* toolchain.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = toolchain.json; sourceTree = "<group>"; };
+		AA00000000000000000000C1 /* WicketTallyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WicketTallyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -26,6 +27,7 @@
 			path = WicketTally;
 			sourceTree = "<group>";
 		};
+		AA00000000000000000000C2 /* WicketTallyUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = WicketTallyUITests; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -38,6 +40,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA00000000000000000000C3 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -45,6 +48,7 @@
 			isa = PBXGroup;
 			children = (
 				AA00000000000000000000AC /* WicketTally */,
+				AA00000000000000000000C2 /* WicketTallyUITests */,
 				AA00000000000000000000B3 /* toolchain.json */,
 				AA00000000000000000000B2 /* Products */,
 			);
@@ -54,6 +58,7 @@
 			isa = PBXGroup;
 			children = (
 				AA00000000000000000000B1 /* WicketTally.app */,
+				AA00000000000000000000C1 /* WicketTallyUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -85,7 +90,27 @@
 			productReference = AA00000000000000000000B1 /* WicketTally.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AA00000000000000000000C0 /* WicketTallyUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA00000000000000000000C6;
+			buildPhases = (AA00000000000000000000C4, AA00000000000000000000C3, AA00000000000000000000C5);
+			buildRules = ();
+			dependencies = (AA00000000000000000000CA,);
+			fileSystemSynchronizedGroups = (AA00000000000000000000C2,);
+			name = WicketTallyUITests;
+			productName = WicketTallyUITests;
+			productReference = AA00000000000000000000C1;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		AA00000000000000000000CB = {isa = PBXContainerItemProxy; containerPortal = AA00000000000000000000A1; proxyType = 1; remoteGlobalIDString = AA00000000000000000000A2; remoteInfo = WicketTally; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		AA00000000000000000000CA = {isa = PBXTargetDependency; target = AA00000000000000000000A2; targetProxy = AA00000000000000000000CB; };
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		AA00000000000000000000A1 /* Project object */ = {
@@ -98,6 +123,7 @@
 					AA00000000000000000000A2 = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
+					AA00000000000000000000C0 = {CreatedOnToolsVersion = 26.0.1; TestTargetID = AA00000000000000000000A2; };
 				};
 			};
 			buildConfigurationList = AA00000000000000000000A3 /* Build configuration list for PBXProject "WicketTally" */;
@@ -117,6 +143,7 @@
 			projectRoot = "";
 			targets = (
 				AA00000000000000000000A2 /* WicketTally */,
+				AA00000000000000000000C0 /* WicketTallyUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -129,6 +156,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA00000000000000000000C5 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -139,6 +167,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA00000000000000000000C4 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
@@ -274,6 +303,38 @@
 			};
 			name = Release;
 		};
+		AA00000000000000000000C7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.infinityball.wickettally.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = WicketTally;
+			};
+			name = Debug;
+		};
+		AA00000000000000000000C8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.infinityball.wickettally.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = WicketTally;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -295,6 +356,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		AA00000000000000000000C6 = {isa = XCConfigurationList; buildConfigurations = (AA00000000000000000000C7, AA00000000000000000000C8,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
