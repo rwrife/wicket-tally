@@ -243,7 +243,9 @@ struct ScorerView: View {
                 .accessibilityIdentifier("scorer.rulesSummary")
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Last over")
+                // The visible header carries the dots so VoiceOver, UI
+                // tests, and sun-glance users all read one stable string.
+                Text(lastOverLabel)
                     .font(.headline)
 
                 LazyVGrid(
@@ -264,10 +266,6 @@ struct ScorerView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            // One explicit label so the strip is a single predictable
-            // accessibility element regardless of lazy dot rendering.
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(lastOverLabel)
             .accessibilityIdentifier("scorer.lastOver")
         }
         .padding(16)

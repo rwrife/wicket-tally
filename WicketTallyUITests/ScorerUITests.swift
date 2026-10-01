@@ -33,16 +33,18 @@ final class ScorerUITests: XCTestCase {
         }
         attach(app, name: "03-ball-entry")
         app.buttons["scorer.ball.4"].tap()
-        // The scoreboard renders one merged accessibility element, so its
-        // children surface with the scoreboard's identifier but their own
-        // labels. Query by label rather than per-child identifier.
+        // The scoreboard merges into one accessibility element; children
+        // surface under the scoreboard identifier with their own labels.
+        // The last-over header text now carries the dot sequence itself
+        // ("Last over 4, –"), so match by label everywhere.
         let score = app.staticTexts.matching(NSPredicate(format: "label == '4/0'")).firstMatch
         XCTAssertTrue(score.waitForExistence(timeout: 5))
         app.buttons["scorer.glanceToggle"].tap()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == '4/0'")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == '4/0'")).firstMatch
+            .waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Overs '")).firstMatch.exists)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'RRR '")).firstMatch.exists)
-        let lastOver = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Last over'")).firstMatch
+        let lastOver = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Last over '")).firstMatch
         XCTAssertTrue(lastOver.waitForExistence(timeout: 5))
         XCTAssertTrue(lastOver.label.contains("4"))
         attach(app, name: "04-glance")
