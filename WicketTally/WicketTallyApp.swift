@@ -13,6 +13,19 @@ struct WicketTallyApp: App {
     @State private var dataGeneration = 0
     @State private var showDataRefresh = false
 
+    init() {
+        // UI-test seam (issue #9): `--indica-theme <id>` seeds the persisted
+        // skin selection before the first view reads it, so the Sunlight
+        // theme layout tests run deterministically on the CI simulator.
+        // Unknown ids are ignored; real users' stored choice is untouched.
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "--indica-theme"),
+           index + 1 < arguments.count,
+           IndicaThemeSelection(rawValue: arguments[index + 1]) != nil {
+            UserDefaults.standard.set(arguments[index + 1], forKey: "indica.theme.selection")
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             AppHome(onDataChanged: {

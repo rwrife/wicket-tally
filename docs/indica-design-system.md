@@ -279,16 +279,25 @@ Requirements: body text 4.5:1 (7:1 on Sunlight), large text and non-text UI
 ## Evidence
 
 ```
-cd Packages/IndicaTheme && swift test        # 14 tests, contrast audit + matrix
+cd Packages/IndicaTheme && swift test        # contrast audit + matrix
 ./scripts/check_indica_tokens.sh             # fails on hardcoded colours in any feature view
 xcodebuild -scheme WicketTally -destination 'generic/platform=iOS Simulator' build
+bash scripts/run_ios_ui_tests.sh             # scorer + Sunlight layout tests on smallest iPhone
 ```
 
-Layout/visual snapshot tests for the scorer and glance mode in the Sunlight
-theme are **pending-human-field-check**: outdoor legibility needs a
-real-sunlight check on device, and automated layout screenshots still need
-an iPhone simulator UI-test target on the pinned Apple runner. The
-token-level contrast audit above is automated and runs on every change.
+Layout tests for the scorer and glance mode **in the Sunlight theme** run
+automated on the pinned Apple runner
+(`WicketTallyUITests/ScorerSunlightUITests.swift`, launched with
+`--indica-theme sunlight`): they assert the >= 60 pt outdoor target sizes hold
+under the Sunlight skin on the smallest iPhone simulator, that glance mode
+keeps a glance-legible scoreline frame, and they attach
+`10-sunlight-scorer` / `11-sunlight-glance` screenshots to the xcresult as
+visual evidence.
+
+What remains **pending-human-field-check**: real-sun legibility perception on
+a physical device under the Sunlight skin. Simulator screenshots cannot
+reproduce outdoor luminance; the token-level contrast audit above is
+automated and runs on every change.
 
 ## Feature-view token enforcement
 
