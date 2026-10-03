@@ -4,14 +4,22 @@ import WicketStore
 @MainActor
 enum LocalStore {
     private static var didSeedUITest = false
+    private static var didResetAdhocUITest = false
 
     static func open() throws -> WicketStore {
         let manager = FileManager.default
         let root = try manager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let directory = root.appendingPathComponent("WicketTally", isDirectory: true)
         try manager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let isUITest = ProcessInfo.processInfo.arguments.contains("--ui-testing-scorer")
-        let url = directory.appendingPathComponent(isUITest ? "scorer-ui-test.sqlite" : "wicket-tally.sqlite")
+        let arguments = ProcessInfo.processInfo.arguments
+        let isUITest = arguments.contains("--ui-testing-scorer")
+        let isFreshAdhocUITest = arguments.contains("--ui-testing-adhoc")
+        let isAdhocRelaunchUITest = arguments.contains("--ui-testing-adhoc-relaunch")
+        let fileName: String
+        if isUITest { fileName = "scorer-ui-test.sqlite" }
+        else if isFreshAdhocUITest || isAdhocRelaunchUITest { fileName = "adhoc-ui-test.sqlite" }
+        else { fileName = "wicket-tally.sqlite" }
+        let url = directory.appendingPathComponent(fileName)
         if isUITest && !didSeedUITest {
             didSeedUITest = true
             for suffix in ["", "-wal", "-shm"] {
@@ -29,6 +37,14 @@ enum LocalStore {
                 endsAt: Date(timeIntervalSince1970: 1_800_007_200), reminder: .none
             )
             return store
+        }
+        if isAdhocUITest && !didResetAdhocUITest {
+            // Issue #16 UI seam: start from a genuinely empty database so the
+            // test proves an impromptu game needs no league/team/ground setup.
+            didResetAdhocUITest = true
+            for suffix in ["", "-wal", "-shm"] {
+                try? manager.removeItem(atPath: url.path + suffix)
+            }
         }
         return try WicketStore.open(at: url)
     }

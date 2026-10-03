@@ -293,12 +293,26 @@ public struct WicketStore: Sendable {
         }
     }
 
-    public func listLeagues(includeArchived: Bool = false) throws -> [LeagueRecord] {
+    /// Lists user-owned leagues and tournaments. The system-owned
+    /// quick-games container (issue #16) is hidden by default: it exists
+    /// only to hold throwaway teams for impromptu matches and must never
+    /// surface in setup, standings pickers, or stats. Pass
+    /// `includeQuickGames: true` for export/backup-name-resolution paths.
+    public func listLeagues(includeArchived: Bool = false, includeQuickGames: Bool = false) throws -> [LeagueRecord] {
         try db.read { database in
-            let filter = includeArchived ? "" : "WHERE is_archived = 0"
+            var conditions: [String] = []
+            if !includeArchived { conditions.append("is_archived = 0") }
+            if !includeQuickGames { conditions.append("id <> ?") }
+            let filter = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
+            let order = "ORDER BY name COLLATE NOCASE, id"
+            if includeQuickGames {
+                let rows = try Row.fetchAll(database, sql: "SELECT * FROM leagues \(filter) \(order)")
+                return try rows.map(decodeLeague)
+            }
             let rows = try Row.fetchAll(
                 database,
-                sql: "SELECT * FROM leagues \(filter) ORDER BY name COLLATE NOCASE, id"
+                sql: "SELECT * FROM leagues \(filter) \(order)",
+                arguments: [Self.quickGamesLeagueID.rawValue]
             )
             return try rows.map(decodeLeague)
         }
@@ -697,9 +711,20 @@ public struct WicketStore: Sendable {
         }
     }
 
-    public func listGrounds() throws -> [GroundRecord] {
+    /// Grounds a user can pick for scheduled fixtures. The hidden
+    /// quick-games ground (issue #16) is system-owned and never selectable.
+    public func listGrounds(includeQuickGames: Bool = false) throws -> [GroundRecord] {
         try db.read { database in
-            let rows = try Row.fetchAll(database, sql: "SELECT * FROM grounds ORDER BY name COLLATE NOCASE, id")
+            let order = "ORDER BY name COLLATE NOCASE, id"
+            if includeQuickGames {
+                let rows = try Row.fetchAll(database, sql: "SELECT * FROM grounds \(order)")
+                return try rows.map(decodeGround)
+            }
+            let rows = try Row.fetchAll(
+                database,
+                sql: "SELECT * FROM grounds WHERE id <> ? \(order)",
+                arguments: [Self.quickGamesGroundID.rawValue]
+            )
             return try rows.map(decodeGround)
         }
     }
@@ -850,6 +875,22 @@ public struct WicketStore: Sendable {
     public func deleteFixture(id: FixtureID) throws {
         try db.write { database in
             try database.execute(sql: "DELETE FROM fixtures WHERE id = ?", arguments: [id.rawValue])
+            // Garbage-collect throwaway ad-hoc teams (issue #16): the hidden
+            // quick-games league holds one team pair per impromptu game, and
+            // nothing else can legitimately reference those rows. Once the
+            // last fixture using a pair is gone, the pair goes with it.
+            try database.execute(
+                sql: """
+                DELETE FROM teams
+                WHERE league_id = ?
+                  AND id NOT IN (
+                      SELECT home_team_id FROM fixtures
+                      UNION
+                      SELECT away_team_id FROM fixtures
+                  )
+                """,
+                arguments: [Self.quickGamesLeagueID.rawValue]
+            )
         }
     }
 
