@@ -58,7 +58,10 @@ public enum FixtureValidationError: Error, Equatable, Sendable {
     case sameTeam
 }
 
-public struct FixtureRecord: Sendable, Codable, Equatable, Identifiable {
+/// Hashable so a fixture can be a `NavigationStack` value destination: an
+/// impromptu game (issue #16) pushes the scorer programmatically right
+/// after the quick-game sheet dismisses.
+public struct FixtureRecord: Sendable, Codable, Equatable, Hashable, Identifiable {
     public let id: FixtureID
     public let leagueID: LeagueID?
     public let name: String
