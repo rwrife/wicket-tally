@@ -38,7 +38,7 @@ enum LocalStore {
             )
             return store
         }
-        if isAdhocUITest && !didResetAdhocUITest {
+        if isFreshAdhocUITest && !didResetAdhocUITest {
             // Issue #16 UI seam: start from a genuinely empty database so the
             // test proves an impromptu game needs no league/team/ground setup.
             didResetAdhocUITest = true
