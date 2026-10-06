@@ -31,23 +31,17 @@ final class AdhocScoringUITests: XCTestCase {
         XCTAssertTrue(start.waitForExistence(timeout: 5))
         attach(app, name: "20-adhoc-sheet")
 
-        // Type the two sides. Submit moves focus to the next field and the
-        // final submit releases the keyboard deterministically.
+        // Tap the second field directly: keyboard return-key labels are not
+        // consistently exposed as Buttons by iOS accessibility bridges.
         let home = app.textFields["adhoc.homeName"]
         XCTAssertTrue(home.waitForExistence(timeout: 5))
         home.tap()
         home.typeText("Street Kings")
-        let next = app.buttons["Next"]
-        XCTAssertTrue(next.waitForExistence(timeout: 5), "Keyboard Next key missing")
-        next.tap()
 
         let away = app.textFields["adhoc.awayName"]
         XCTAssertTrue(away.waitForExistence(timeout: 5))
         away.tap()
-        away.typeText("Gully XI")
-        let done = app.buttons["Done"]
-        XCTAssertTrue(done.waitForExistence(timeout: 5), "Keyboard Done key missing")
-        done.tap()
+        away.typeText("Gully XI\n")
 
         // Bound the keyboard-dismiss animation before tapping start.
         var remaining = 10
@@ -83,7 +77,7 @@ final class AdhocScoringUITests: XCTestCase {
 
         // The impromptu fixture persists across relaunch with its derived
         // side names rendered from the hidden quick-games records.
-        let row = app.staticTexts.matching(NSPredicate(format: "CONTAINS[c] 'gully xi'")).firstMatch
+        let row = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Gully XI")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15), "Ad-hoc game did not persist")
         attach(app, name: "23-adhoc-relaunch-list")
 
