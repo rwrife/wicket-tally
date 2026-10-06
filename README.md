@@ -28,6 +28,7 @@ Wicket Tally puts the whole match day on one offline iPhone: fixtures, teams, to
 3. **Casual rules without a rulebook.** Enable gully rules: one-hand catch = out, boundary rope marked by chappals, over = 6 balls or N runs, short innings limits — configured once per league, never a legal verdict.
 4. **Standings and stats at the tea break.** Points tables (win/tie/NRR-safe manual points), per-player batting/bowling averages, strike rates, economy — computed offline from the ledger.
 5. **End of season.** Export the full league history as JSON/CSV backup, share a printable scorecard PDF or plain-text summary the team actually reads on WhatsApp.
+6. **Gully cricket on zero notice.** Two friends show up with a tennis ball: tap Quick game, type the two side names and the overs, and score immediately — the game persists like any fixture without ever needing a league, team, or ground entry.
 
 ## How to use (intended end-to-end workflow)
 
@@ -41,6 +42,7 @@ Wicket Tally puts the whole match day on one offline iPhone: fixtures, teams, to
 ## MVP feature list
 
 - Leagues, tournaments, teams, players, and fixtures with grounds and time slots.
+- Quick game: score an impromptu match from just two side names — no league, team, or ground setup — opening straight into the same outdoor scorer.
 - Match-day flow: toss, innings, ball-by-ball scoring with undo/redo and per-over narrative.
 - Standard limited-overs rules (T10/T20/ODI length configurable) plus a gully/casual rule preset (user-owned settings, no umpiring advice).
 - Outdoor-first UI: high-contrast sunlight themes, ≥ 60 pt primary tap targets, glanceable scoreboard mode, Dark Mode and VoiceOver support, one-handed layout.

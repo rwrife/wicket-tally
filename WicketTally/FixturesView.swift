@@ -10,14 +10,36 @@ struct FixturesView: View {
     @State private var model: FixturesViewModel
     @State private var draft: FixtureEditorState?
     @State private var selectedConflict: [FixtureConflict] = []
+    @State private var showingAdhocSheet = false
+    /// Set by a confirmed quick-game start; drives the navigation to the
+    /// scorer once the sheet has dismissed (a sheet cannot present a push
+    /// while it is on screen).
+    @State private var pendingAdhocFixture: FixtureRecord?
+    /// Value-based path so a confirmed quick game can push the scorer from
+    /// outside the sheet that started it.
+    @State private var path: [FixtureRecord] = []
 
     init(model: FixturesViewModel = .live()) {
         _model = State(initialValue: model)
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
+                Section {
+                    Button {
+                        showingAdhocSheet = true
+                    } label: {
+                        Label("Quick game", systemImage: "play.circle.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 60)
+                    }
+                    .accessibilityIdentifier("fixtures.quickGame")
+                } footer: {
+                    Text("Score an impromptu game from two names — no league, teams, or ground setup.")
+                }
+                .indicaRowBackground()
+
                 if model.fixtures.isEmpty {
                     Section {
                         Text("No fixtures yet")
@@ -92,6 +114,14 @@ struct FixturesView: View {
                 }
             }
             .navigationTitle("Fixtures")
+            .navigationDestination(for: FixtureRecord.self) { fixture in
+                ScorerView(
+                    fixture: fixture,
+                    homeName: model.team(fixture.homeTeamID)?.name ?? "Home",
+                    awayName: model.team(fixture.awayTeamID)?.name ?? "Away",
+                    store: model.scoringStore
+                )
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -131,6 +161,27 @@ struct FixturesView: View {
             .sheet(item: $statsLeague, onDismiss: { leagueStats = nil }) { league in
                 leagueStatsSheet(for: league)
             }
+            .sheet(isPresented: $showingAdhocSheet, onDismiss: {
+                // Push the scorer only now that the sheet is gone; a push
+                // while a sheet is up gets swallowed by the presentation.
+                if let fixture = pendingAdhocFixture {
+                    pendingAdhocFixture = nil
+                    path.append(fixture)
+                }
+            }) {
+                AdhocStartSheet { homeName, awayName, overs in
+                    do {
+                        let start = try model.startQuickGame(homeName: homeName, awayName: awayName, overs: overs)
+                        pendingAdhocFixture = start.fixture
+                    } catch {
+                        // The sheet keeps its form open and shows the
+                        // failure itself; no parent-level alert stacked
+                        // behind it.
+                        throw error
+                    }
+                }
+                .presentationDetents([.large])
+            }
             .alert(
                 "Fixtures",
                 isPresented: Binding(
@@ -144,7 +195,7 @@ struct FixturesView: View {
             }
             .overlay(alignment: .bottom) {
                 if bootstrapDraft() == nil {
-                    Text("Create at least one league with two teams in Setup first.")
+                    Text("Or tap Quick game above to score right now — no league, teams, or ground needed.")
                         .font(.footnote)
                         .multilineTextAlignment(.center)
                         .padding(12)

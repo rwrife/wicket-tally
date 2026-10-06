@@ -623,7 +623,10 @@ extension WicketStore {
   }
 
   fileprivate func csvContext() throws -> CSVContext {
-    let leagues = try listLeagues(includeArchived: true)
+    // includeQuickGames: true so ad-hoc team names still resolve in the
+    // standalone-match scorecard sections below; the container league is
+    // filtered out of the per-league projections in `csvProjections`.
+    let leagues = try listLeagues(includeArchived: true, includeQuickGames: true)
     let teams = try leagues.flatMap { try listTeams(leagueID: $0.id, includeArchived: true) }
     let players = try teams.flatMap { try listPlayers(teamID: $0.id, includeArchived: true) }
     return CSVContext(
@@ -652,7 +655,12 @@ extension WicketStore {
     context: CSVContext,
     includeStandaloneFixtures: Bool = false
   ) throws -> [CSVProjection] {
-    var projections = try context.leagues.map { league in
+    // The hidden quick-games container never projects as a standings/stats
+    // table (issue #16): impromptu matches are standalone fixtures and
+    // surface as standalone scorecards instead.
+    var projections = try context.leagues
+      .filter { $0.id != WicketStore.quickGamesLeagueID }
+      .map { league in
       let teams = context.teams.filter { $0.leagueID == league.id }
       let teamIDs = Set(teams.map(\.id))
       let players = context.players.filter { teamIDs.contains($0.teamID) }

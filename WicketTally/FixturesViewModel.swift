@@ -78,8 +78,20 @@ final class FixturesViewModel {
         }
     }
 
-    func team(_ id: TeamID) -> TeamRecord? { teams.first { $0.id == id } }
-    func ground(_ id: GroundID) -> GroundRecord? { grounds.first { $0.id == id } }
+    func team(_ id: TeamID) -> TeamRecord? {
+        if let cached = teams.first(where: { $0.id == id }) { return cached }
+        // Ad-hoc throwaway teams (issue #16) are deliberately absent from
+        // the setup cache so they never appear in pickers; resolve them by
+        // id so their user-entered names still render on quick-game rows.
+        return try? store?.team(id: id)
+    }
+    func ground(_ id: GroundID) -> GroundRecord? {
+        if let cached = grounds.first(where: { $0.id == id }) { return cached }
+        // The hidden quick-games ground (issue #16) stays out of picker
+        // lists but still resolves by id so quick-game rows show "Any
+        // ground" instead of "Unknown ground".
+        return try? store?.ground(id: id)
+    }
     var scoringStore: WicketStore? { store }
 
     /// Builds league statistics from the persisted ledgers plus the stored
@@ -177,6 +189,21 @@ final class FixturesViewModel {
         try requiredStore().deleteFixture(id: fixture.id)
         await notifications.removeReminder(for: fixture.id)
         reload()
+    }
+
+    /// Starts an impromptu game (issue #16): two names and an overs choice,
+    /// no league/team/ground setup. The returned fixture is standalone and
+    /// opens straight into the scorer.
+    @discardableResult
+    func startQuickGame(homeName: String, awayName: String, overs: Int) throws -> AdhocMatchStart {
+        let store = try requiredStore()
+        let start = try store.startAdhocMatch(
+            homeName: homeName,
+            awayName: awayName,
+            rules: MatchRules(oversPerInnings: overs)
+        )
+        reload()
+        return start
     }
 
     func report(_ error: Error) { errorMessage = message(for: error) }
