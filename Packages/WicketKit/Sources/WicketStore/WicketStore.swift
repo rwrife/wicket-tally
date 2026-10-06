@@ -10,6 +10,7 @@ public enum WicketStoreError: Error, Equatable, Sendable {
     case recordNotFound
     case confirmationStale
     case scoringConflict
+    case scheduleAlreadyExists
     /// A stored configuration blob could not be decoded. Never swallowed: a
     /// corrupt league preset surfaces instead of silently reverting to defaults.
     case malformedConfiguration

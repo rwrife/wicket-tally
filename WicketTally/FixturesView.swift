@@ -11,6 +11,7 @@ struct FixturesView: View {
     @State private var draft: FixtureEditorState?
     @State private var selectedConflict: [FixtureConflict] = []
     @State private var showingAdhocSheet = false
+    @State private var showingScheduleDraft = false
     /// Set by a confirmed quick-game start; drives the navigation to the
     /// scorer once the sheet has dismissed (a sheet cannot present a push
     /// while it is on screen).
@@ -37,6 +38,21 @@ struct FixturesView: View {
                     .accessibilityIdentifier("fixtures.quickGame")
                 } footer: {
                     Text("Score an impromptu game from two names — no league, teams, or ground setup.")
+                }
+                .indicaRowBackground()
+
+                Section {
+                    Button {
+                        showingScheduleDraft = true
+                    } label: {
+                        Label("Draft tournament schedule", systemImage: "calendar.badge.plus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 60)
+                    }
+                    .disabled(model.leagues.isEmpty || model.grounds.isEmpty)
+                    .accessibilityIdentifier("fixtures.draftSchedule")
+                } footer: {
+                    Text("Generate and review offline. Nothing is saved until you confirm.")
                 }
                 .indicaRowBackground()
 
@@ -160,6 +176,10 @@ struct FixturesView: View {
             // recomputation updates the sheet instead of dismissing it.
             .sheet(item: $statsLeague, onDismiss: { leagueStats = nil }) { league in
                 leagueStatsSheet(for: league)
+            }
+            .sheet(isPresented: $showingScheduleDraft) {
+                ScheduleDraftSheet(model: model)
+                    .presentationDetents([.large])
             }
             .sheet(isPresented: $showingAdhocSheet, onDismiss: {
                 // Push the scorer only now that the sheet is gone; a push

@@ -125,6 +125,15 @@ final class FixturesViewModel {
         try requiredStore().setPointsOverride(leagueID: leagueID, override: override)
     }
 
+    func previewSchedule(_ records: [FixtureRecord]) throws -> [[FixtureConflict]] {
+        try requiredStore().previewSchedule(records)
+    }
+
+    func commitSchedule(_ records: [FixtureRecord], confirmedConflicts: [[FixtureConflict]]) throws {
+        try requiredStore().commitSchedule(records, confirmedConflicts: confirmedConflicts)
+        reload()
+    }
+
     func createGround(name: String) throws -> GroundRecord {
         let ground = try requiredStore().createGround(name: name)
         reload()
