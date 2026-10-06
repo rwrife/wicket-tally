@@ -17,10 +17,10 @@ struct FixtureSchedulingTests {
             end: date("2026-10-04T11:00:00Z")
         )
         let cases: [(String, GroundID, Set<PlayerID>, Date, Date, Set<FixtureConflictReason>)] = [
-            ("player only", "other-ground", ["p2"], date("2026-10-04T10:00:00Z"), date("2026-10-04T12:00:00Z"), [.player("p2")]),
-            ("ground only", "azad-maidan", ["p3"], date("2026-10-04T10:00:00Z"), date("2026-10-04T12:00:00Z"), [.ground("azad-maidan")]),
-            ("player and ground", "azad-maidan", ["p1"], date("2026-10-04T10:00:00Z"), date("2026-10-04T12:00:00Z"), [.ground("azad-maidan"), .player("p1")]),
-            ("different resources", "other-ground", ["p3"], date("2026-10-04T10:00:00Z"), date("2026-10-04T12:00:00Z"), []),
+            ("player only", "other-ground", ["p2"], date("2026-10-04T10:00:00Z"), date("2026-10-04T12:00:00Z"), [.player("p2"), .team("home"), .team("away")]),
+            ("ground only", "azad-maidan", ["p3"], date("2026-10-04T10:00:00Z"), date("2026-10-04T12:00:00Z"), [.ground("azad-maidan"), .team("home"), .team("away")]),
+            ("player and ground", "azad-maidan", ["p1"], date("2026-10-04T10:00:00Z"), date("2026-10-04T12:00:00Z"), [.ground("azad-maidan"), .player("p1"), .team("home"), .team("away")]),
+            ("different resources, same teams", "other-ground", ["p3"], date("2026-10-04T10:00:00Z"), date("2026-10-04T12:00:00Z"), [.team("home"), .team("away")]),
             ("touching slot boundary", "azad-maidan", ["p1"], date("2026-10-04T11:00:00Z"), date("2026-10-04T12:00:00Z"), []),
         ]
 
@@ -169,6 +169,21 @@ struct FixtureSchedulingTests {
         #expect(both.explanation == "Clashes with Full clash: same ground and 2 double-booked players.")
     }
 
+    @Test("team-only overlap is warned even on separate grounds with no players")
+    func teamOnlyConflict() {
+        let existing = fixture(id: "first", name: "First", groundID: "park", players: [],
+            start: date("2026-10-04T09:00:00Z"), end: date("2026-10-04T11:00:00Z"))
+        let candidate = FixtureRecord(id: "next", leagueID: nil, name: "Next",
+            homeTeamID: "home", awayTeamID: "other", groundID: "elsewhere",
+            participatingPlayerIDs: [], startsAt: date("2026-10-04T10:00:00Z"),
+            endsAt: date("2026-10-04T12:00:00Z"), reminder: .none,
+            createdAt: date("2026-01-01T00:00:00Z"), updatedAt: date("2026-01-01T00:00:00Z"))
+        let conflicts = FixtureConflictDetector.conflicts(for: candidate, among: [existing])
+        #expect(conflicts.count == 1)
+        #expect(conflicts[0].reasons == [.team("home")])
+        #expect(conflicts[0].explanation.contains("double-booked team"))
+    }
+
     private func fixture(
         id: FixtureID,
         name: String,
@@ -200,5 +215,6 @@ struct FixtureSchedulingTests {
 
 private extension FixtureConflictReason {
     static func ground(_ value: String) -> FixtureConflictReason { .ground(GroundID(value)) }
+    static func team(_ value: String) -> FixtureConflictReason { .team(TeamID(value)) }
     static func player(_ value: String) -> FixtureConflictReason { .player(PlayerID(value)) }
 }

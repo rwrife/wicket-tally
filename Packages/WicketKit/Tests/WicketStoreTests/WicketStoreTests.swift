@@ -150,7 +150,9 @@ struct WicketStoreFixtureTests {
         let reasons = Set(conflicts[0].reasons)
         #expect(reasons.contains(.ground(ground.id)))
         #expect(reasons.contains(.player(player.id)))
-        #expect(reasons.count == 2)
+        #expect(reasons.contains(.team(home.id)))
+        #expect(reasons.contains(.team(away.id)))
+        #expect(reasons.count == 4)
         #expect(conflicts[0].explanation.contains("Existing fixture"))
     }
 

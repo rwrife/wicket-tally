@@ -138,6 +138,7 @@ public struct FixtureRecord: Sendable, Codable, Equatable, Hashable, Identifiabl
 
 public enum FixtureConflictReason: Hashable, Sendable, Codable {
     case ground(GroundID)
+    case team(TeamID)
     case player(PlayerID)
 }
 
@@ -153,13 +154,12 @@ public struct FixtureConflict: Sendable, Codable, Equatable {
     }
 
     public var explanation: String {
-        let groundCount = reasons.filter {
-            if case .ground = $0 { return true }
-            return false
-        }.count
-        let playerCount = reasons.count - groundCount
+        let groundCount = reasons.filter { if case .ground = $0 { return true }; return false }.count
+        let teamCount = reasons.filter { if case .team = $0 { return true }; return false }.count
+        let playerCount = reasons.count - groundCount - teamCount
         var details: [String] = []
         if groundCount > 0 { details.append("same ground") }
+        if teamCount > 0 { details.append(teamCount == 1 ? "1 double-booked team" : "\(teamCount) double-booked teams") }
         if playerCount > 0 {
             details.append(playerCount == 1 ? "1 double-booked player" : "\(playerCount) double-booked players")
         }
@@ -180,6 +180,9 @@ public enum FixtureConflictDetector {
                 if existing.groundID == candidate.groundID {
                     reasons.append(.ground(candidate.groundID))
                 }
+                let sharedTeams = Set([candidate.homeTeamID, candidate.awayTeamID])
+                    .intersection([existing.homeTeamID, existing.awayTeamID])
+                reasons.append(contentsOf: sharedTeams.sorted { $0.rawValue < $1.rawValue }.map(FixtureConflictReason.team))
                 reasons.append(contentsOf: candidate.participatingPlayerIDs
                     .intersection(existing.participatingPlayerIDs)
                     .sorted { $0.rawValue < $1.rawValue }
