@@ -245,20 +245,31 @@ jobs:
           printf 'IPA_PATH=%s\n' "$ipa" >> "$GITHUB_ENV"
           echo "Signed IPA created."
 
-      - name: Upload signed IPA to TestFlight
+      - name: Upload signed archive to TestFlight
+        timeout-minutes: 15
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_TEAM_ID: ${{ secrets.ASC_TEAM_ID }}
         run: |
           set -euo pipefail
-          scripts/release/run_secure.sh "$RUNNER_TEMP/upload.log" -- \
-            xcrun altool \
-              --upload-app \
-              --type ios \
-              --file "$IPA_PATH" \
-              --apiKey "$ASC_KEY_ID" \
-              --apiIssuer "$ASC_ISSUER_ID"
-          echo "App Store Connect accepted the upload. TestFlight processing and availability remain PENDING human verification."
+          printf 'UPLOAD_STARTED_AT=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          bash scripts/release/upload_testflight.sh "$ARCHIVE_PATH" "$ASC_KEY_PATH"
+          echo "App Store Connect accepted the upload. Processing remains pending."
+
+      - name: Await exact processed TestFlight build
+        timeout-minutes: 22
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          MARKETING_VERSION: ${{ inputs.marketing_version }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/poll_testflight.py \
+            --key-path "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer-id "$ASC_ISSUER_ID" \
+            --bundle-id com.infinityball.wickettally --version "$MARKETING_VERSION" \
+            --build-number "$BUILD_NUMBER" --started-at "$UPLOAD_STARTED_AT"
 
       - name: Record non-secret release evidence
         env:
@@ -274,7 +285,7 @@ jobs:
           from pathlib import Path
 
           evidence = {
-              "status": "UPLOAD_ACCEPTED_TESTFLIGHT_AVAILABILITY_PENDING",
+              "status": "BUILD_PROCESSED_TESTFLIGHT_AVAILABILITY_PENDING",
               "repository": os.environ["GITHUB_REPOSITORY"],
               "commit": os.environ["GITHUB_SHA"],
               "tag": os.environ["RELEASE_TAG"],
@@ -286,9 +297,13 @@ jobs:
                   f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
                   f"/actions/runs/{os.environ['GITHUB_RUN_ID']}"
               ),
-              "testflight_build_available": "PENDING HUMAN VERIFICATION",
+              "app_store_connect_processing": "PROCESSED (VALID or COMPLETE)",
+              "testflight_tester_availability": "PENDING HUMAN VERIFICATION",
               "app_store_submission": "NOT PERFORMED - MANUAL GATE",
           }
+          proc_file = Path(os.environ["EVIDENCE_PATH"], "processed-build.json")
+          if proc_file.exists():
+              evidence["processed_build"] = json.loads(proc_file.read_text())
           Path(os.environ["EVIDENCE_PATH"], "release-evidence.json").write_text(
               json.dumps(evidence, indent=2) + "\n"
           )
@@ -301,8 +316,9 @@ jobs:
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Version/build: \`$MARKETING_VERSION ($BUILD_NUMBER)\`"
             echo "- Bundle/device family: \`com.infinityball.wickettally\`, \`[1]\`"
-            echo "- Upload: accepted by App Store Connect"
-            echo "- TestFlight build availability: **PENDING human verification**"
+            echo "- App Store Connect upload: accepted"
+            echo "- App Store Connect processing: **VALID (processed)**"
+            echo "- TestFlight tester availability: **PENDING human verification**"
             echo "- App Store submission: **NOT PERFORMED - manual gate**"
           } >> "$GITHUB_STEP_SUMMARY"
 

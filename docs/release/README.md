@@ -18,9 +18,12 @@ release status is **PENDING**.
    `com.infinityball.wickettally`;
 5. verifies the archive signature, bundle identifier, exact
    `UIDeviceFamily = [1]`, marketing version, and build number;
-6. exports an IPA and uploads it to App Store Connect/TestFlight;
-7. records only non-secret evidence and marks TestFlight availability as
-   **PENDING human verification**.
+6. exports a signed IPA locally and uploads the verified archive via Xcode 26's
+   `xcodebuild -exportArchive` TestFlight upload destination;
+7. polls App Store Connect for the exact version/build uploaded during this run,
+   then records the processed build ID and non-secret evidence. If processing
+   fails or times out, the release run fails. Tester availability remains
+   pending human verification.
 
 The workflow does not submit a build for App Review, choose phased release,
 release to the App Store, or modify App Store metadata. Those actions are a

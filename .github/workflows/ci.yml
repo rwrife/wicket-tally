@@ -54,7 +54,13 @@ jobs:
       - name: Run package unit tests with coverage
         run: swift test --package-path Packages/WicketKit --enable-code-coverage
 
-      - name: WicketKit coverage floor (>=90%)
+      - name: Run release script tests
+        run: |
+          set -euo pipefail
+          python3 scripts/release/test_release_scripts.py
+          bash -n scripts/release/*.sh
+
+      - name: Check WicketKit line coverage floor (>=90%)
         run: bash scripts/check_wicketkit_coverage.sh
 
       - name: WicketKit purity gate
