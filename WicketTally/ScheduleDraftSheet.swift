@@ -128,7 +128,7 @@ struct ScheduleDraftSheet: View {
                         end: start.addingTimeInterval(offset + 7_200), groundID: ground.id)
                 }
             }
-        } catch { error = "Add at least two distinct teams to this tournament before generating a schedule." }
+        } catch { self.error = "Add at least two distinct teams to this tournament before generating a schedule." }
     }
 
     private func review() {
@@ -148,7 +148,7 @@ struct ScheduleDraftSheet: View {
                 )
             }
             confirmation = (records, try model.previewSchedule(records))
-        } catch { error = "Review fixture times and grounds before saving: \(error.localizedDescription)" }
+        } catch { self.error = "Review fixture times and grounds before saving: \(error.localizedDescription)" }
     }
 
     private func commit() {
@@ -156,7 +156,7 @@ struct ScheduleDraftSheet: View {
         do {
             try model.commitSchedule(confirmation.records, confirmedConflicts: confirmation.conflicts)
             dismiss()
-        } catch { error = "Schedule changed or could not be saved. Regenerate and review it before trying again: \(error.localizedDescription)" }
+        } catch { self.error = "Schedule changed or could not be saved. Regenerate and review it before trying again: \(error.localizedDescription)" }
         self.confirmation = nil
     }
 }
