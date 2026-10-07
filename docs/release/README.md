@@ -18,25 +18,28 @@ release status is **PENDING**.
    `com.infinityball.wickettally`;
 5. verifies the archive signature, bundle identifier, exact
    `UIDeviceFamily = [1]`, marketing version, and build number;
-6. exports an IPA and uploads it to App Store Connect/TestFlight;
-7. records only non-secret evidence and marks TestFlight availability as
-   **PENDING human verification**.
+6. exports a signed IPA locally and uploads the verified archive via Xcode 26's
+   `xcodebuild -exportArchive` TestFlight upload destination;
+7. polls App Store Connect for the exact version/build uploaded during this run,
+   then records the processed build ID and non-secret evidence. If processing
+   fails or times out, the release run fails. Tester availability remains
+   pending human verification.
 
 The workflow does not submit a build for App Review, choose phased release,
 release to the App Store, or modify App Store metadata. Those actions are a
 manual human gate.
 
-## Current local environment blocker
+## Current release acceptance blockers
 
-The local `/Applications/Xcode.app` is Xcode 27.0 (build 27A266a), while the
-repository release policy requires exactly Xcode 26.0.1 (build 17A400). A local
-archive or simulator run from this machine therefore **must not be represented
-as pinned release evidence**, even if it otherwise builds successfully.
+The executor runs on Linux and cannot create an Apple archive locally. Ordinary
+PR CI has verified the exact Xcode 26.0.1 (17A400), iOS SDK 26.0 pin on a hosted
+Apple runner, but that unsigned build is not signing or TestFlight evidence.
 
-Release evidence must come from an Apple runner or other environment that
-measures exactly Xcode 26.0.1 (17A400) and iOS SDK 26.0. Until such a run exists,
-the exact-toolchain release gate is **BLOCKED/PENDING**. Do not substitute Xcode
-27.0, relax the pin, or relabel local output as equivalent evidence.
+On 2026-10-07, GitHub reported no repository environments. Before dispatching a
+release candidate, the owner must create `testflight` with required reviewers
+as described below. Do not let a dispatch implicitly create an unprotected
+environment or treat configured secret names as proof of usable signing access.
+No signed release workflow run or processed TestFlight build has been observed.
 
 ## One-time GitHub and Apple setup
 
@@ -108,7 +111,8 @@ does not create or push tags.
 
 | Evidence | Status |
 | --- | --- |
-| Local pinned-toolchain evidence | **BLOCKED - local Xcode is 27.0 (27A266a), not pinned 26.0.1 (17A400)** |
+| Hosted Apple CI pin | **PASS - PR #27 CI run 37492305102 measured Xcode 26.0.1 (17A400), iOS SDK 26.0; unsigned, not archive evidence** |
+| Protected release environment | **BLOCKED - `testflight` not configured as of 2026-10-07** |
 | Real release workflow run URL | **PENDING** |
 | Signed archive verification from that run | **PENDING** |
 | App Store Connect upload acceptance | **PENDING** |
