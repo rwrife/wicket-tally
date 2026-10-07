@@ -22,7 +22,7 @@ def parse_timestamp(s: str) -> datetime:
 
 def poll(key_path, key_id, issuer_id, bundle_id, version, build_number, started_at,
          deadline_seconds=1200, interval=30, request=None, clock=None, pause=None):
-    """Return the processed build ID; never accept an older upload or another version."""
+    """Return processed build evidence; never accept an older upload or another version."""
     request = request or urllib.request.urlopen
     clock = clock or time.time
     pause = pause or time.sleep
@@ -64,6 +64,7 @@ def poll(key_path, key_id, issuer_id, bundle_id, version, build_number, started_
         "filter[app]": app_id,
         "filter[version]": build_number,
         "filter[preReleaseVersion.version]": version,
+        "include": "preReleaseVersion",
         "sort": "-uploadedDate",
         "limit": 15,
     }
@@ -87,7 +88,9 @@ def poll(key_path, key_id, issuer_id, bundle_id, version, build_number, started_
             state = attr.get("processingState")
             print(f"App {app_id} build {build['id']} version {version} ({build_number}): {state}", flush=True)
             if state in {"VALID", "COMPLETE"}:
-                return build["id"]
+                return {"app_id": app_id, "bundle_identifier": bundle_id,
+                        "version": version, "build_number": build_number,
+                        "build_id": build["id"], "processing_state": state}
             if state in {"FAILED", "INVALID"}:
                 raise RuntimeError("TestFlight processing failed: " + state)
         pause(interval)
@@ -100,19 +103,19 @@ def main():
         parser.add_argument("--" + flag, required=True)
     args = parser.parse_args()
     try:
-        build_id = poll(args.key_path, args.key_id, args.issuer_id, args.bundle_id,
-                        args.version, args.build_number, args.started_at)
+        build_info = poll(args.key_path, args.key_id, args.issuer_id, args.bundle_id,
+                          args.version, args.build_number, args.started_at)
     except Exception as error:
         # API responses or environment may contain sensitive data: report error class, not raw response body.
         print(f"Release poll failed: {type(error).__name__}", file=sys.stderr)
         raise SystemExit(1)
-    print("Processed TestFlight build ID: " + build_id)
+    print("Processed TestFlight build ID: " + build_info["build_id"])
     evidence_path = os.environ.get("EVIDENCE_PATH")
     if evidence_path:
         with open(os.path.join(evidence_path, "processed-build.json"), "w") as output:
-            json.dump({"app_id": args.bundle_id, "version": args.version,
-                       "build_number": args.build_number, "build_id": build_id,
-                       "status": "PROCESSED"}, output, indent=2)
+            payload = dict(build_info)
+            payload["status"] = "PROCESSED"
+            json.dump(payload, output, indent=2)
             output.write("\n")
 
 

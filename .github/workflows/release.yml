@@ -297,13 +297,16 @@ jobs:
                   f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
                   f"/actions/runs/{os.environ['GITHUB_RUN_ID']}"
               ),
-              "app_store_connect_processing": "PROCESSED (VALID or COMPLETE)",
+              "app_store_connect_processing": "PROCESSED",
               "testflight_tester_availability": "PENDING HUMAN VERIFICATION",
               "app_store_submission": "NOT PERFORMED - MANUAL GATE",
           }
           proc_file = Path(os.environ["EVIDENCE_PATH"], "processed-build.json")
-          if proc_file.exists():
-              evidence["processed_build"] = json.loads(proc_file.read_text())
+          proc_data = json.loads(proc_file.read_text())
+          if proc_data["processing_state"] not in {"VALID", "COMPLETE"} or not proc_data["build_id"]:
+              raise SystemExit("FAIL: missing processed-build evidence")
+          evidence["processed_build"] = proc_data
+          evidence["app_store_connect_processing"] = f"PROCESSED ({proc_data['processing_state']})"
           Path(os.environ["EVIDENCE_PATH"], "release-evidence.json").write_text(
               json.dumps(evidence, indent=2) + "\n"
           )
@@ -317,7 +320,7 @@ jobs:
             echo "- Version/build: \`$MARKETING_VERSION ($BUILD_NUMBER)\`"
             echo "- Bundle/device family: \`com.infinityball.wickettally\`, \`[1]\`"
             echo "- App Store Connect upload: accepted"
-            echo "- App Store Connect processing: **VALID (processed)**"
+            echo "- App Store Connect processing: **PROCESSED (VALID or COMPLETE)**"
             echo "- TestFlight tester availability: **PENDING human verification**"
             echo "- App Store submission: **NOT PERFORMED - manual gate**"
           } >> "$GITHUB_STEP_SUMMARY"

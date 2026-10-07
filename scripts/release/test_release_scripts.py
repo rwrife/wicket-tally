@@ -57,6 +57,7 @@ class ReleaseTests(unittest.TestCase):
                 self.assertEqual(query["filter[bundleId]"], ["com.infinityball.wickettally"])
                 data = [{"id": f"app-{i}"} for i in range(apps)]
             elif url.path == "/v1/builds":
+                self.assertEqual(query.get("include"), ["preReleaseVersion"])
                 data = [{"id": "build-999", "attributes": {
                     "version": number, "uploadedDate": uploaded, "processingState": state},
                     "relationships": {"preReleaseVersion": {"data": {"id": "pre-1"} if relationship else None}}}]
@@ -76,7 +77,11 @@ class ReleaseTests(unittest.TestCase):
                         interval=0, request=request, clock=clock, pause=lambda _: None)
 
     def test_exact_processed_build(self):
-        self.assertEqual(self.run_poll(), "build-999")
+        self.assertEqual(self.run_poll(), {
+            "app_id": "app-0", "bundle_identifier": "com.infinityball.wickettally",
+            "version": "0.1.0", "build_number": "42", "build_id": "build-999",
+            "processing_state": "VALID",
+        })
 
     def test_reject_near_matches(self):
         with self.assertRaises(TimeoutError):
@@ -91,7 +96,50 @@ class ReleaseTests(unittest.TestCase):
             self.run_poll(state="PROCESSING")
 
     def test_complete_state_accepted(self):
-        self.assertEqual(self.run_poll(state="COMPLETE"), "build-999")
+        info = self.run_poll(state="COMPLETE")
+        self.assertEqual(info["build_id"], "build-999")
+        self.assertEqual(info["processing_state"], "COMPLETE")
+
+    def test_cli_evidence_preserves_app_id_and_processing_state(self):
+        import os
+        import poll_testflight
+        import sys
+
+        info = self.run_poll(state="COMPLETE")
+        with tempfile.TemporaryDirectory() as directory:
+            args = ["poll_testflight.py", "--key-path", "synthetic-key", "--key-id", "KEY",
+                    "--issuer-id", "ISS", "--bundle-id", "com.infinityball.wickettally",
+                    "--version", "0.1.0", "--build-number", "42",
+                    "--started-at", "2026-10-06T12:00:00Z"]
+            with patch.object(sys, "argv", args), patch.object(poll_testflight, "poll", return_value=info), \
+                    patch.dict(os.environ, {"EVIDENCE_PATH": directory}):
+                poll_testflight.main()
+            evidence = json.loads(Path(directory, "processed-build.json").read_text())
+            self.assertEqual(evidence, {**info, "status": "PROCESSED"})
+
+    def test_workflow_evidence_requires_processed_build(self):
+        workflow = Path(__file__).resolve().parents[2] / ".github/workflows/release.yml"
+        text = workflow.read_text().split("      - name: Record non-secret release evidence", 1)[1]
+        lines = text.split("          python3 - <<'PY'\n", 1)[1].split("\n          PY", 1)[0]
+        code = "\n".join(line[10:] for line in lines.splitlines())
+        import os
+
+        with tempfile.TemporaryDirectory() as directory:
+            env = dict(os.environ, EVIDENCE_PATH=directory, GITHUB_REPOSITORY="rwrife/wicket-tally",
+                       GITHUB_SHA="synthetic-sha", RELEASE_TAG="v0.1.0-rc.42", MARKETING_VERSION="0.1.0",
+                       BUILD_NUMBER="42", GITHUB_SERVER_URL="https://github.com", GITHUB_RUN_ID="synthetic-run")
+            for state in ("VALID", "COMPLETE", "PROCESSING"):
+                info = {"build_id": "synthetic-build", "app_id": "synthetic-app", "processing_state": state}
+                Path(directory, "processed-build.json").write_text(json.dumps(info))
+                result = subprocess.run(["python3", "-c", code], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode == 0, state in {"VALID", "COMPLETE"}, result.stderr)
+                if result.returncode == 0:
+                    evidence = json.loads(Path(directory, "release-evidence.json").read_text())
+                    self.assertEqual(evidence["processed_build"], info)
+                    self.assertEqual(evidence["app_store_connect_processing"], f"PROCESSED ({state})")
+            Path(directory, "processed-build.json").unlink()
+            result = subprocess.run(["python3", "-c", code], env=env, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
 
     def test_terminal_failure(self):
         for state in ("FAILED", "INVALID"):
