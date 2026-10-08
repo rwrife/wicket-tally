@@ -9,10 +9,11 @@ public struct StatsFixture: Equatable, Sendable {
     public let rules: MatchRules
     public let ledger: MatchLedger
     public let playerIDs: Set<PlayerID>
+    public let startsAt: Date?
 
     public init(
         id: FixtureID, homeTeamID: TeamID, awayTeamID: TeamID,
-        rules: MatchRules, ledger: MatchLedger, playerIDs: Set<PlayerID> = []
+        rules: MatchRules, ledger: MatchLedger, playerIDs: Set<PlayerID> = [], startsAt: Date? = nil
     ) {
         self.id = id
         self.homeTeamID = homeTeamID
@@ -20,6 +21,7 @@ public struct StatsFixture: Equatable, Sendable {
         self.rules = rules
         self.ledger = ledger
         self.playerIDs = playerIDs
+        self.startsAt = startsAt
     }
 }
 

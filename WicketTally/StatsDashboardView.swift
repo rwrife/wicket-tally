@@ -8,6 +8,7 @@ struct StatsDashboardView: View {
     @State private var leagues: [LeagueRecord] = []
     @State private var selectedLeague: LeagueID?
     @State private var stats: LeagueStats?
+    @State private var season: [PlayerSeasonInsight] = []
     @State private var teamNames: [TeamID: String] = [:]
     @State private var playerNames: [PlayerID: String] = [:]
     @State private var fixtureNames: [FixtureID: String] = [:]
@@ -27,6 +28,7 @@ struct StatsDashboardView: View {
                 if let stats {
                     StatsView(
                         stats: stats,
+                        season: season,
                         teamNames: teamNames,
                         playerNames: playerNames,
                         fixtureNames: fixtureNames,
@@ -58,6 +60,7 @@ struct StatsDashboardView: View {
             try reload()
         } catch {
             stats = nil
+            season = []
             errorMessage = error.localizedDescription
         }
     }
@@ -82,9 +85,11 @@ struct StatsDashboardView: View {
                 awayTeamID: fixture.awayTeamID,
                 rules: session.rules,
                 ledger: session.ledger,
-                playerIDs: fixture.participatingPlayerIDs
+                playerIDs: fixture.participatingPlayerIDs,
+                startsAt: fixture.startsAt
             )
         }
+        season = try SeasonInsights.derive(fixtures: inputs, playerIDs: players.map(\.id))
         teamNames = Dictionary(uniqueKeysWithValues: teams.map { ($0.id, $0.name) })
         playerNames = Dictionary(uniqueKeysWithValues: players.map { ($0.id, $0.name) })
         fixtureNames = Dictionary(uniqueKeysWithValues: fixtures.map { ($0.id, $0.name) })
