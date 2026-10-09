@@ -6,6 +6,7 @@ import WicketKit
 struct StatsView: View {
     @Environment(\.indicaTheme) private var theme
     let stats: LeagueStats
+    let season: [PlayerSeasonInsight]
     var teamNames: [TeamID: String] = [:]
     var playerNames: [PlayerID: String] = [:]
     var fixtureNames: [FixtureID: String] = [:]
@@ -14,13 +15,17 @@ struct StatsView: View {
 
     init(
         stats: LeagueStats,
+        season: [PlayerSeasonInsight] = [],
         teamNames: [TeamID: String] = [:],
+
         playerNames: [PlayerID: String] = [:],
         fixtureNames: [FixtureID: String] = [:],
         savePointsOverride: ((StandingsPointsOverride) throws -> Void)? = nil
     ) {
         self.stats = stats
+        self.season = season
         self.teamNames = teamNames
+
         self.playerNames = playerNames
         self.fixtureNames = fixtureNames
         self.savePointsOverride = savePointsOverride
@@ -56,6 +61,15 @@ struct StatsView: View {
                             if savePointsOverride != nil {
                                 Button("Enter manual points") { editingTeam = StatsEditingTeam(id: row.teamID) }
                             }
+                        }
+                    }
+                }
+                .indicaRowBackground()
+                Section("Season insights") {
+                    ForEach(season, id: \.playerID) { player in
+                        NavigationLink(playerNames[player.playerID] ?? player.playerID.rawValue) {
+                            PlayerSeasonView(insight: player, stats: stats, teamNames: teamNames,
+                                playerNames: playerNames, fixtureNames: fixtureNames)
                         }
                     }
                 }
