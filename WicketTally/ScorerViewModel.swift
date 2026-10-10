@@ -257,7 +257,10 @@ final class ScorerViewModel {
 
     private func selectedPlayers(store: WicketStore, teamID: TeamID) throws -> [PlayerRecord] {
         let lineup = try store.fixtureLineup(fixtureID: fixture.id, teamID: teamID)
-        let players = try store.listPlayers(teamID: teamID)
+        let players = try store.listPlayers(teamID: teamID, includeArchived: true)
+        // Unknown attribution: a fixture with no recorded lineup keeps the
+        // pre-lineup behaviour of offering the full roster.
+        guard !lineup.playerIDs.isEmpty else { return players }
         return lineup.playerIDs.compactMap { id in players.first { $0.id == id } }
     }
 

@@ -1012,10 +1012,6 @@ public struct WicketStore: Sendable {
             guard eventCount == 0 else {
                 throw WicketStoreError.scoringConflict
             }
-            for row in try Row.fetchAll(database, sql: "SELECT payload FROM fixture_lineups WHERE fixture_id = ?", arguments: [fixtureID.rawValue]) {
-                let lineup = try JSONDecoder().decode(TeamLineup.self, from: row["payload"] as Data)
-                guard lineup.playerIDs.count <= rules.playersPerSide else { throw LineupError.teamSizeExceeded(rules.playersPerSide) }
-            }
             try database.execute(
                 sql: """
                 INSERT OR REPLACE INTO match_rules
