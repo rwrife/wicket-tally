@@ -157,6 +157,64 @@ struct LineupTests {
         }
     }
 
+    @Test func participantWritesValidateAndRollBack() throws {
+        let store = try WicketStore.inMemory()
+        let (home, away, first, second, fixture) = try setup(store)
+        try store.setRulePreset(try RulePreset(name: "Pairs", playersPerSide: 2), for: home.leagueID)
+        let thirdTeam = try store.createTeam(leagueID: home.leagueID, name: "Other", colour: .saffron)
+        let foreign = try store.createPlayer(teamID: thirdTeam.id, name: "Foreign", role: .batter)
+        let archived = try store.createPlayer(teamID: away.id, name: "Archived", role: .batter)
+        try store.setPlayerArchived(id: archived.id, archived: true)
+        let visitor = try store.createPlayer(teamID: away.id, name: "Visitor", role: .batter)
+        let third = try store.createPlayer(teamID: home.id, name: "Third", role: .batter)
+        func create(_ ids: Set<PlayerID>) throws -> FixtureRecord {
+            try store.createFixture(leagueID: fixture.leagueID, name: "New", homeTeamID: home.id, awayTeamID: away.id, groundID: fixture.groundID, participatingPlayerIDs: ids, startsAt: fixture.startsAt, endsAt: fixture.endsAt, reminder: .none)
+        }
+        func update(_ ids: Set<PlayerID>) throws {
+            try store.updateFixture(id: fixture.id, leagueID: fixture.leagueID, name: "Changed", homeTeamID: home.id, awayTeamID: away.id, groundID: fixture.groundID, participatingPlayerIDs: ids, startsAt: fixture.startsAt, endsAt: fixture.endsAt, reminder: .none)
+        }
+        #expect(throws: LineupError.teamSizeExceeded(2)) { try create([first.id, second.id, third.id]) }
+        #expect(throws: LineupError.teamSizeExceeded(2)) { try update([first.id, second.id, third.id]) }
+        for id in [foreign.id, archived.id, PlayerID("missing")] {
+            #expect(throws: LineupError.unavailablePlayer(id)) { try create([id]) }
+            #expect(throws: LineupError.unavailablePlayer(id)) { try update([id]) }
+        }
+        #expect(try store.listFixtures().count == 1)
+        #expect(try store.fixture(id: fixture.id) == fixture)
+        #expect(Set(try store.fixtureLineup(fixtureID: fixture.id, teamID: home.id).playerIDs) == [first.id, second.id])
+        // A failed rules change must preserve the previous explicit snapshot.
+        try store.setMatchRules(try RulePreset(name: "Three", playersPerSide: 3).rules, fixtureID: fixture.id)
+        try update([first.id, second.id, third.id])
+        #expect(throws: LineupError.teamSizeExceeded(2)) {
+            try store.setMatchRules(try RulePreset(name: "Pairs", playersPerSide: 2).rules, fixtureID: fixture.id)
+        }
+        #expect(try store.scoringSession(fixtureID: fixture.id).rules.playersPerSide == 3)
+        let fourth = try store.createPlayer(teamID: home.id, name: "Fourth", role: .batter)
+        #expect(throws: LineupError.teamSizeExceeded(3)) { try update([first.id, second.id, third.id, fourth.id]) }
+        let oversized = TeamLineup(playerIDs: [first.id, second.id, third.id, fourth.id])
+        #expect(throws: LineupError.teamSizeExceeded(2)) {
+            try store.createFixture(leagueID: fixture.leagueID, name: "Explicit", homeTeamID: home.id, awayTeamID: away.id, groundID: fixture.groundID, participatingPlayerIDs: [], startsAt: fixture.startsAt, endsAt: fixture.endsAt, reminder: .none, lineups: [home.id: oversized, away.id: TeamLineup()])
+        }
+        #expect(throws: LineupError.teamSizeExceeded(3)) {
+            try store.updateFixture(id: fixture.id, leagueID: fixture.leagueID, name: "Explicit", homeTeamID: home.id, awayTeamID: away.id, groundID: fixture.groundID, participatingPlayerIDs: [], startsAt: fixture.startsAt, endsAt: fixture.endsAt, reminder: .none, lineups: [home.id: oversized, away.id: TeamLineup()])
+        }
+        let valid = try create([first.id, visitor.id])
+        #expect(try store.fixtureLineup(fixtureID: valid.id, teamID: away.id).playerIDs == [visitor.id])
+        try update([second.id, visitor.id])
+        #expect(try store.fixtureLineup(fixtureID: fixture.id, teamID: home.id).playerIDs == [second.id])
+    }
+
+    @Test func persistedLineupReadErrorsAreExplicit() throws {
+        let store = try WicketStore.inMemory()
+        let (home, _, _, _, fixture) = try setup(store)
+        try store.db.write { database in
+            try database.execute(sql: "UPDATE fixture_lineups SET payload = ? WHERE fixture_id = ? AND team_id = ?", arguments: [Data("invalid JSON".utf8), fixture.id.rawValue, home.id.rawValue])
+        }
+        #expect(throws: DecodingError.self) {
+            try store.fixtureLineup(fixtureID: fixture.id, teamID: home.id)
+        }
+    }
+
     @Test func migrationAndRelaunch() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -164,10 +222,19 @@ struct LineupTests {
         try WicketStore.migrator.migrate(database, upTo: "v6")
         let old = WicketStore(db: database)
         let (home, _, first, second, fixture) = try setup(old)
+        // Historical selections can exceed the current preset and contain archived players.
+        let third = try old.createPlayer(teamID: home.id, name: "Third", role: .batter)
+        try database.write { db in
+            try db.execute(sql: "INSERT INTO fixture_players VALUES (?, ?)", arguments: [fixture.id.rawValue, third.id.rawValue])
+        }
+        try old.setRulePreset(try RulePreset(name: "Pairs", playersPerSide: 2), for: home.leagueID)
+        try old.setPlayerArchived(id: second.id, archived: true)
         let legacyBackup = try old.makeBackup()
         try WicketStore.migrator.migrate(database)
-        let expected = Set([first.id, second.id])
+        let expected = Set([first.id, second.id, third.id])
         #expect(Set(try old.fixtureLineup(fixtureID: fixture.id, teamID: home.id).playerIDs) == expected)
+        try old.setRulePreset(try RulePreset(name: "Pairs", playersPerSide: 2), for: home.leagueID)
+        try old.setPlayerArchived(id: second.id, archived: false)
         let lineup = TeamLineup(playerIDs: [second.id, first.id], hasBattingOrder: true)
         try old.setFixtureLineup(lineup, fixtureID: fixture.id, teamID: home.id)
         let template = try old.saveLineupTemplate(teamID: home.id, name: "Persisted", lineup: lineup)

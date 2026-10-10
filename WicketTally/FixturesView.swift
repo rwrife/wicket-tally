@@ -548,7 +548,11 @@ private struct FixtureEditorSheet: View {
                 recordedDeliveries = session.ledger.events.contains { if case .ball = $0.kind { return true }; return false }
                 for team in sides where draft.lineups[team] == nil {
                     // A team swapped in before scoring has no stored lineup yet.
-                    draft.lineups[team] = (try? store.fixtureLineup(fixtureID: fixture.id, teamID: team)) ?? TeamLineup()
+                    if [fixture.homeTeamID, fixture.awayTeamID].contains(team) {
+                        draft.lineups[team] = try store.fixtureLineup(fixtureID: fixture.id, teamID: team)
+                    } else {
+                        draft.lineups[team] = TeamLineup()
+                    }
                 }
             } else {
                 lineupLimit = try draft.leagueID.map { try store.rulePreset(for: $0).playersPerSide } ?? 11

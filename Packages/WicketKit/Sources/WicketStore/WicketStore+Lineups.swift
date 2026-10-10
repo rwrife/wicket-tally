@@ -73,6 +73,20 @@ extension WicketStore {
         }
     }
 
+    /// Validate new participant-ID writes with the same rules as explicit lineups.
+    func validateFixtureParticipants(_ ids: Set<PlayerID>, fixtureID: FixtureID, home: TeamID, away: TeamID, in database: Database) throws {
+        var selections: [TeamID: [PlayerID]] = [home: [], away: []]
+        for id in ids.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard let team = try String.fetchOne(database, sql: "SELECT team_id FROM players WHERE id = ? AND is_archived = 0", arguments: [id.rawValue]),
+                  selections[TeamID(team)] != nil else { throw LineupError.unavailablePlayer(id) }
+            selections[TeamID(team), default: []].append(id)
+        }
+        let rules = try effectiveLineupRules(fixtureID: fixtureID, in: database)
+        for team in [home, away] {
+            try Self.validateLineup(TeamLineup(playerIDs: selections[team] ?? []), teamID: team, limit: rules.playersPerSide, in: database)
+        }
+    }
+
     private func effectiveLineupRules(fixtureID: FixtureID, in database: Database) throws -> MatchRules {
         let rules: MatchRules
         if let row = try Row.fetchOne(database, sql: "SELECT * FROM match_rules WHERE fixture_id = ?", arguments: [fixtureID.rawValue]) {
@@ -83,7 +97,9 @@ extension WicketStore {
     }
 
     /// Used for pre-lineup databases and old backups. No historical selection
-    /// is discarded just because it exceeds today's configured size.
+    /// is discarded just because it exceeds today's configured size or includes
+    /// archived players. This exception is only for historical migration/backup
+    /// backfill; new participant-ID and lineup writes must validate first.
     static func backfillFixtureLineups(in database: Database) throws {
         guard try database.tableExists("fixture_lineups") else { return }
         for row in try Row.fetchAll(database, sql: "SELECT id, home_team_id, away_team_id FROM fixtures") {

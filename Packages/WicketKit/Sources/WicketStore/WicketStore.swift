@@ -822,6 +822,8 @@ public struct WicketStore: Sendable {
 
             if let lineups {
                 try saveFixtureLineups(lineups, fixtureID: record.id, home: homeTeamID, away: awayTeamID, in: database)
+            } else {
+                try validateFixtureParticipants(participatingPlayerIDs, fixtureID: record.id, home: homeTeamID, away: awayTeamID, in: database)
             }
             for playerID in participatingPlayerIDs {
                 try database.execute(
@@ -898,6 +900,8 @@ public struct WicketStore: Sendable {
             try database.execute(sql: "DELETE FROM fixture_players WHERE fixture_id = ?", arguments: [id.rawValue])
             if let lineups {
                 try saveFixtureLineups(lineups, fixtureID: id, home: homeTeamID, away: awayTeamID, in: database)
+            } else {
+                try validateFixtureParticipants(participatingPlayerIDs, fixtureID: id, home: homeTeamID, away: awayTeamID, in: database)
             }
             for playerID in participatingPlayerIDs {
                 try database.execute(
@@ -1011,6 +1015,16 @@ public struct WicketStore: Sendable {
             ) ?? 0
             guard eventCount == 0 else {
                 throw WicketStoreError.scoringConflict
+            }
+            if try database.tableExists("fixture_lineups") {
+                for payload in try Data.fetchAll(database, sql: "SELECT payload FROM fixture_lineups WHERE fixture_id = ?", arguments: [fixtureID.rawValue]) {
+                    let lineup = try JSONDecoder().decode(TeamLineup.self, from: payload)
+                    guard lineup.playerIDs.count <= rules.playersPerSide else { throw LineupError.teamSizeExceeded(rules.playersPerSide) }
+                }
+            }
+            for row in try Row.fetchAll(database, sql: "SELECT p.team_id, COUNT(*) AS count FROM fixture_players fp JOIN players p ON p.id = fp.player_id WHERE fp.fixture_id = ? GROUP BY p.team_id", arguments: [fixtureID.rawValue]) {
+                let count: Int = row["count"]
+                guard count <= rules.playersPerSide else { throw LineupError.teamSizeExceeded(rules.playersPerSide) }
             }
             try database.execute(
                 sql: """
