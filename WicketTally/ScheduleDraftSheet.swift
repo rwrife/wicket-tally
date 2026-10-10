@@ -48,7 +48,7 @@ struct ScheduleDraftSheet: View {
 
                 if let plan {
                     Section("Review — \(plan.rounds.count) rounds, \(plan.projectedMatchCount) projected matches") {
-                        Text("\(plan.knownMatchCount) pairings can be scheduled now. Future knockout matches with undecided winners remain unscheduled until teams are known.")
+                        Text("Choose match-day players in each fixture editor after saving. \(plan.knownMatchCount) pairings can be scheduled now. Future knockout matches with undecided winners remain unscheduled until teams are known.")
                             .font(.subheadline)
                             .foregroundStyle(theme.palette.textSecondary.color)
                         ForEach(plan.rounds, id: \.number) { round in
@@ -141,7 +141,7 @@ struct ScheduleDraftSheet: View {
                     id: FixtureID(UUID().uuidString.lowercased()), leagueID: leagueID,
                     name: "Round \(slot.round): \(name(home)) vs \(name(away))",
                     homeTeamID: home, awayTeamID: away, groundID: slot.groundID,
-                    participatingPlayerIDs: Set(model.players.filter { $0.teamID == home || $0.teamID == away }.map(\.id)),
+                    participatingPlayerIDs: [],
                     startsAt: Date(timeIntervalSince1970: Double(Int64(slot.start.timeIntervalSince1970 * 1000)) / 1000),
                     endsAt: Date(timeIntervalSince1970: Double(Int64(slot.end.timeIntervalSince1970 * 1000)) / 1000),
                     reminder: .none, createdAt: now, updatedAt: now

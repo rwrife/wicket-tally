@@ -67,11 +67,6 @@ extension WicketStore {
                       try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM grounds WHERE id = ?", arguments: [record.groundID.rawValue]) == 1,
                       try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM teams WHERE league_id = ? AND id IN (?, ?)", arguments: [league.rawValue, record.homeTeamID.rawValue, record.awayTeamID.rawValue]) == 2
                 else { throw WicketStoreError.parentNotFound }
-                for player in record.participatingPlayerIDs {
-                    guard try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM players WHERE id = ? AND team_id IN (?, ?)", arguments: [player.rawValue, record.homeTeamID.rawValue, record.awayTeamID.rawValue]) == 1 else {
-                        throw WicketStoreError.parentNotFound
-                    }
-                }
                 try database.execute(sql: """
                     INSERT INTO fixtures (id, league_id, name, home_team_id, away_team_id, ground_id,
                       starts_at_ms, ends_at_ms, reminder_minutes, created_at_ms, updated_at_ms)
@@ -81,9 +76,11 @@ extension WicketStore {
                         record.startsAt.millisecondsSince1970, record.endsAt.millisecondsSince1970,
                         record.reminder.rawValue, record.createdAt.millisecondsSince1970,
                         record.updatedAt.millisecondsSince1970])
+                try validateFixtureParticipants(record.participatingPlayerIDs, fixtureID: record.id, home: record.homeTeamID, away: record.awayTeamID, in: database)
                 for player in record.participatingPlayerIDs {
                     try database.execute(sql: "INSERT INTO fixture_players (fixture_id, player_id) VALUES (?, ?)", arguments: [record.id.rawValue, player.rawValue])
                 }
+                try Self.backfillFixtureLineups(in: database)
                 previous.append(record)
             }
         }

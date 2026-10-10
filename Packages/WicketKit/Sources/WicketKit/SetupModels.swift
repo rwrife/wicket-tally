@@ -187,11 +187,13 @@ public struct LeagueDeletionPreview: Sendable, Codable, Equatable {
     public let playerCount: Int
     public let fixtureCount: Int
     public let scoringEventCount: Int
+    public let lineupTemplateCount: Int
+    public let fixtureLineupCount: Int
     public let pointsOverrideCount: Int
 
     public init(
         leagueID: LeagueID, leagueName: String, teamCount: Int, playerCount: Int,
-        fixtureCount: Int = 0, scoringEventCount: Int = 0, pointsOverrideCount: Int = 0
+        fixtureCount: Int = 0, scoringEventCount: Int = 0, pointsOverrideCount: Int = 0, lineupTemplateCount: Int = 0, fixtureLineupCount: Int = 0
     ) {
         self.leagueID = leagueID
         self.leagueName = leagueName
@@ -200,11 +202,13 @@ public struct LeagueDeletionPreview: Sendable, Codable, Equatable {
         self.fixtureCount = fixtureCount
         self.scoringEventCount = scoringEventCount
         self.pointsOverrideCount = pointsOverrideCount
+        self.lineupTemplateCount = lineupTemplateCount
+        self.fixtureLineupCount = fixtureLineupCount
     }
 
     private enum CodingKeys: String, CodingKey {
         case leagueID, leagueName, teamCount, playerCount
-        case fixtureCount, scoringEventCount, pointsOverrideCount
+        case fixtureCount, scoringEventCount, pointsOverrideCount, lineupTemplateCount, fixtureLineupCount
     }
 
     public init(from decoder: Decoder) throws {
@@ -216,7 +220,9 @@ public struct LeagueDeletionPreview: Sendable, Codable, Equatable {
             playerCount: try values.decode(Int.self, forKey: .playerCount),
             fixtureCount: try values.decodeIfPresent(Int.self, forKey: .fixtureCount) ?? 0,
             scoringEventCount: try values.decodeIfPresent(Int.self, forKey: .scoringEventCount) ?? 0,
-            pointsOverrideCount: try values.decodeIfPresent(Int.self, forKey: .pointsOverrideCount) ?? 0
+            pointsOverrideCount: try values.decodeIfPresent(Int.self, forKey: .pointsOverrideCount) ?? 0,
+            lineupTemplateCount: try values.decodeIfPresent(Int.self, forKey: .lineupTemplateCount) ?? 0,
+            fixtureLineupCount: try values.decodeIfPresent(Int.self, forKey: .fixtureLineupCount) ?? 0
         )
     }
 
@@ -241,6 +247,8 @@ public struct LeagueDeletionPreview: Sendable, Codable, Equatable {
         if pointsOverrideCount > 0 {
             parts.append(pointsOverrideCount == 1 ? "1 points override" : "\(pointsOverrideCount) points overrides")
         }
+        if lineupTemplateCount > 0 { parts.append(lineupTemplateCount == 1 ? "1 lineup template" : "\(lineupTemplateCount) lineup templates") }
+        if fixtureLineupCount > 0 { parts.append(fixtureLineupCount == 1 ? "1 fixture lineup" : "\(fixtureLineupCount) fixture lineups") }
         guard !parts.isEmpty else { return "Delete \(leagueName)" }
         if parts.count == 1 {
             return "Delete \(leagueName), \(parts[0])"

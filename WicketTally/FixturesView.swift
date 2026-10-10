@@ -1,5 +1,6 @@
 import SwiftUI
 import WicketKit
+import WicketStore
 
 struct FixturesView: View {
     @Environment(\.indicaTheme) private var theme
@@ -230,6 +231,7 @@ struct FixturesView: View {
                 leagues: model.leagues,
                 teams: model.teams,
                 grounds: model.grounds,
+                store: model.scoringStore,
                 onCreateGround: { name in
                     do {
                         let ground = try model.createGround(name: name)
@@ -240,14 +242,8 @@ struct FixturesView: View {
                     }
                 },
                 onSave: { state, edited in
-                    Task {
-                        do {
-                            selectedConflict = try await model.save(edited, editing: state.fixture)
-                            draft = nil
-                        } catch {
-                            model.report(error)
-                        }
-                    }
+                    selectedConflict = try await model.save(edited, editing: state.fixture)
+                    draft = nil
                 }
             )
             .presentationDetents([.large])
@@ -385,25 +381,34 @@ private struct FixtureEditorSheet: View {
     let leagues: [LeagueRecord]
     let teams: [TeamRecord]
     let grounds: [GroundRecord]
+    let store: WicketStore?
     let onCreateGround: (String) -> GroundID?
-    let onSave: (FixtureEditorState, FixtureDraft) -> Void
+    let onSave: (FixtureEditorState, FixtureDraft) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var draft: FixtureDraft
     @State private var newGroundName = ""
+    @State private var lineupPlayers: [PlayerRecord] = []
+    @State private var templates: [LineupTemplate] = []
+    @State private var lineupLimit = 11
+    @State private var lineupError: String?
+    @State private var recordedDeliveries = false
+    @State private var saving = false
 
     init(
         state: FixtureEditorState,
         leagues: [LeagueRecord],
         teams: [TeamRecord],
         grounds: [GroundRecord],
+        store: WicketStore?,
         onCreateGround: @escaping (String) -> GroundID?,
-        onSave: @escaping (FixtureEditorState, FixtureDraft) -> Void
+        onSave: @escaping (FixtureEditorState, FixtureDraft) async throws -> Void
     ) {
         self.state = state
         self.leagues = leagues
         self.teams = teams
         self.grounds = grounds
+        self.store = store
         self.onCreateGround = onCreateGround
         self.onSave = onSave
         _draft = State(initialValue: state.draft)
@@ -438,6 +443,27 @@ private struct FixtureEditorSheet: View {
                     }
                 }
                 .indicaRowBackground()
+
+                if recordedDeliveries {
+                    Text("Deliveries have been recorded. Lineup edits affect future selection only; prior ledger attribution and scorecards remain intact.")
+                        .indicaRowBackground()
+                }
+                ForEach(draft.homeTeamID == draft.awayTeamID ? [draft.homeTeamID] : [draft.homeTeamID, draft.awayTeamID], id: \.self) { teamID in
+                    Section(teams.first { $0.id == teamID }?.name ?? "Team lineup") {
+                        Menu("Start from template or fresh lineup") {
+                            Button("Fresh lineup") { draft.lineups[teamID] = TeamLineup() }
+                            ForEach(templates.filter { $0.teamID == teamID }) { template in
+                                Button(template.name) { draft.lineups[teamID] = template.lineup }
+                            }
+                        }
+                    }
+                    .indicaRowBackground()
+                    LineupPicker(players: lineupPlayers.filter { $0.teamID == teamID }, lineup: Binding(
+                        get: { draft.lineups[teamID] ?? TeamLineup() },
+                        set: { draft.lineups[teamID] = $0 }
+                    ), limit: lineupLimit)
+                }
+                if let lineupError { Text(lineupError).indicaRowBackground() }
 
                 Picker("Ground", selection: $draft.groundID) {
                     ForEach(grounds) { ground in
@@ -477,18 +503,63 @@ private struct FixtureEditorSheet: View {
             .indicaScreenBackground()
             .indicaPrimaryText()
             .navigationTitle(state.title)
+            .onAppear { loadLineups() }
+            .onChange(of: draft.homeTeamID) { loadLineups() }
+            .onChange(of: draft.awayTeamID) { loadLineups() }
+            .onChange(of: draft.leagueID) { loadLineups() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        onSave(state, draft)
-                        dismiss()
+                        saving = true
+                        Task {
+                            defer { saving = false }
+                            do {
+                                let sides = [draft.homeTeamID, draft.awayTeamID]
+                                draft.lineups = draft.lineups.filter { sides.contains($0.key) }
+                                for lineup in draft.lineups.values {
+                                    guard lineup.playerIDs.count <= lineupLimit else { throw LineupError.teamSizeExceeded(lineupLimit) }
+                                    for id in lineup.playerIDs {
+                                        guard lineupPlayers.contains(where: { $0.id == id && !$0.isArchived }) else { throw LineupError.unavailablePlayer(id) }
+                                    }
+                                }
+                                try await onSave(state, draft)
+                                dismiss()
+                            } catch { lineupError = error.localizedDescription }
+                        }
                     }
+                    .disabled(saving)
                 }
             }
         }
+    }
+
+    private func loadLineups() {
+        do {
+            guard let store else { throw WicketStoreError.recordNotFound }
+            let sides = Set([draft.homeTeamID, draft.awayTeamID])
+            lineupPlayers = try sides.flatMap { try store.listPlayers(teamID: $0, includeArchived: true) }
+            templates = try sides.flatMap { try store.listLineupTemplates(teamID: $0) }
+            if let fixture = state.fixture {
+                let session = try store.scoringSession(fixtureID: fixture.id)
+                lineupLimit = session.rules.playersPerSide
+                recordedDeliveries = session.ledger.events.contains { if case .ball = $0.kind { return true }; return false }
+                for team in sides where draft.lineups[team] == nil {
+                    // A team swapped in before scoring has no stored lineup yet.
+                    if [fixture.homeTeamID, fixture.awayTeamID].contains(team) {
+                        draft.lineups[team] = try store.fixtureLineup(fixtureID: fixture.id, teamID: team)
+                    } else {
+                        draft.lineups[team] = TeamLineup()
+                    }
+                }
+            } else {
+                lineupLimit = try draft.leagueID.map { try store.rulePreset(for: $0).playersPerSide } ?? 11
+                for team in sides where draft.lineups[team] == nil { draft.lineups[team] = TeamLineup() }
+            }
+            lineupError = nil
+        } catch { lineupError = error.localizedDescription }
     }
 
     private var eligibleTeams: [TeamRecord] {
