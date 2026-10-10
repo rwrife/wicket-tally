@@ -430,6 +430,14 @@ private struct TeamPlayersView: View {
             }
             .indicaRowBackground()
 
+            Section {
+                NavigationLink("Lineup templates") {
+                    LineupTemplatesView(teamID: teamID, store: model.dataStore)
+                }
+                .frame(minHeight: 60)
+            }
+            .indicaRowBackground()
+
             Section("Players") {
                 ForEach(model.players(for: teamID, showArchived: showArchived)) { player in
                     PlayerRow(player: player)

@@ -41,6 +41,8 @@ public struct WicketBackupPreview: Equatable, Sendable {
   public var teamCount: Int { tableCounts["teams", default: 0] }
   public var playerCount: Int { tableCounts["players", default: 0] }
   public var fixtureCount: Int { tableCounts["fixtures", default: 0] }
+  public var lineupTemplateCount: Int { tableCounts["lineup_templates", default: 0] }
+  public var fixtureLineupCount: Int { tableCounts["fixture_lineups", default: 0] }
 }
 
 public struct WicketWipePreview: Equatable, Sendable {
@@ -107,6 +109,7 @@ extension WicketStore {
       for table in backup.tables {
         try restore(table, into: database)
       }
+      try Self.backfillFixtureLineups(in: database)
     }
   }
 

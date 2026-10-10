@@ -248,11 +248,17 @@ final class ScorerViewModel {
         do {
             guard let store else { throw WicketStoreError.recordNotFound }
             session = try store.scoringSession(fixtureID: fixture.id)
-            homePlayers = try store.listPlayers(teamID: fixture.homeTeamID, includeArchived: true)
-            awayPlayers = try store.listPlayers(teamID: fixture.awayTeamID, includeArchived: true)
+            homePlayers = try selectedPlayers(store: store, teamID: fixture.homeTeamID)
+            awayPlayers = try selectedPlayers(store: store, teamID: fixture.awayTeamID)
         } catch {
             report(error)
         }
+    }
+
+    private func selectedPlayers(store: WicketStore, teamID: TeamID) throws -> [PlayerRecord] {
+        let lineup = try store.fixtureLineup(fixtureID: fixture.id, teamID: teamID)
+        let players = try store.listPlayers(teamID: teamID)
+        return lineup.playerIDs.compactMap { id in players.first { $0.id == id } }
     }
 
     private var nextSequence: Int {

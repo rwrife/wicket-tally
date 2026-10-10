@@ -337,7 +337,8 @@ extension WicketBackupPreview {
   fileprivate var restoreSummary: String {
     """
     Backup version \(formatVersion) contains \(leagueCount) leagues, \(teamCount) teams, \
-    \(playerCount) players, \(fixtureCount) fixtures, and \(totalRecordCount) total database records.
+    \(playerCount) players, \(fixtureCount) fixtures, \(lineupTemplateCount) lineup templates, \
+    \(fixtureLineupCount) fixture lineups, and \(totalRecordCount) total database records.
     """
   }
 }

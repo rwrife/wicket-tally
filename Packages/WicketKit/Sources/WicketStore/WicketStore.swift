@@ -187,6 +187,22 @@ public struct WicketStore: Sendable {
                 columns: ["league_id", "team_id", "id"]
             )
         }
+        migrator.registerMigration("v7-lineups") { db in
+            try db.create(table: "lineup_templates") { table in
+                table.column("id", .text).primaryKey()
+                table.column("team_id", .text).notNull().references("teams", onDelete: .cascade)
+                table.column("name", .text).notNull()
+                table.column("payload", .blob).notNull()
+                table.check(sql: "length(trim(name)) > 0")
+            }
+            try db.create(table: "fixture_lineups") { table in
+                table.column("fixture_id", .text).notNull().references("fixtures", onDelete: .cascade)
+                table.column("team_id", .text).notNull().references("teams", onDelete: .cascade)
+                table.column("payload", .blob).notNull()
+                table.primaryKey(["fixture_id", "team_id"])
+            }
+            try Self.backfillFixtureLineups(in: db)
+        }
         return migrator
     }
 
@@ -194,6 +210,7 @@ public struct WicketStore: Sendable {
         if try db.tableExists("standings_points_overrides") {
             try removeV6Schema(db)
         }
+        if try db.tableExists("lineup_templates") { try db.drop(table: "lineup_templates") }
         try db.drop(table: "players")
         try db.drop(table: "teams")
         try db.drop(table: "leagues")
@@ -203,6 +220,7 @@ public struct WicketStore: Sendable {
         if try db.tableExists("match_events") {
             try removeV3Schema(db)
         }
+        if try db.tableExists("fixture_lineups") { try db.drop(table: "fixture_lineups") }
         try db.drop(table: "fixture_players")
         try db.drop(table: "fixtures")
         try db.drop(table: "grounds")
@@ -746,8 +764,10 @@ public struct WicketStore: Sendable {
         participatingPlayerIDs: Set<PlayerID>,
         startsAt: Date,
         endsAt: Date,
-        reminder: FixtureReminder
+        reminder: FixtureReminder,
+        lineups: [TeamID: TeamLineup]? = nil
     ) throws -> FixtureRecord {
+        let participatingPlayerIDs = lineups.map { Set($0.values.flatMap(\.playerIDs)) } ?? participatingPlayerIDs
         let name = try normalized(name)
         guard startsAt < endsAt else { throw WicketStoreError.invalidTimeSlot }
         guard homeTeamID != awayTeamID else { throw WicketStoreError.invalidTeams }
@@ -800,12 +820,16 @@ public struct WicketStore: Sendable {
                 ]
             )
 
+            if let lineups {
+                try saveFixtureLineups(lineups, fixtureID: record.id, home: homeTeamID, away: awayTeamID, in: database)
+            }
             for playerID in participatingPlayerIDs {
                 try database.execute(
                     sql: "INSERT INTO fixture_players (fixture_id, player_id) VALUES (?, ?)",
                     arguments: [record.id.rawValue, playerID.rawValue]
                 )
             }
+            try Self.backfillFixtureLineups(in: database)
         }
         return record
     }
@@ -821,15 +845,24 @@ public struct WicketStore: Sendable {
         participatingPlayerIDs: Set<PlayerID>,
         startsAt: Date,
         endsAt: Date,
-        reminder: FixtureReminder
+        reminder: FixtureReminder,
+        lineups: [TeamID: TeamLineup]? = nil
     ) throws -> FixtureRecord {
+        let participatingPlayerIDs = lineups.map { Set($0.values.flatMap(\.playerIDs)) } ?? participatingPlayerIDs
         let name = try normalized(name)
         guard startsAt < endsAt else { throw WicketStoreError.invalidTimeSlot }
         guard homeTeamID != awayTeamID else { throw WicketStoreError.invalidTeams }
 
         return try db.write { database in
-            guard try fixture(id: id, in: database) != nil else {
+            guard let existing = try fixture(id: id, in: database) else {
                 throw WicketStoreError.recordNotFound
+            }
+            if existing.homeTeamID != homeTeamID || existing.awayTeamID != awayTeamID {
+                let count = try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM match_events WHERE fixture_id = ?", arguments: [id.rawValue]) ?? 0
+                guard count == 0 else { throw WicketStoreError.scoringConflict }
+            }
+            if lineups == nil, existing.participatingPlayerIDs != participatingPlayerIDs || existing.homeTeamID != homeTeamID || existing.awayTeamID != awayTeamID {
+                try database.execute(sql: "DELETE FROM fixture_lineups WHERE fixture_id = ?", arguments: [id.rawValue])
             }
             if let leagueID {
                 guard try league(id: leagueID, in: database) != nil else {
@@ -863,12 +896,16 @@ public struct WicketStore: Sendable {
             )
 
             try database.execute(sql: "DELETE FROM fixture_players WHERE fixture_id = ?", arguments: [id.rawValue])
+            if let lineups {
+                try saveFixtureLineups(lineups, fixtureID: id, home: homeTeamID, away: awayTeamID, in: database)
+            }
             for playerID in participatingPlayerIDs {
                 try database.execute(
                     sql: "INSERT INTO fixture_players (fixture_id, player_id) VALUES (?, ?)",
                     arguments: [id.rawValue, playerID.rawValue]
                 )
             }
+            try Self.backfillFixtureLineups(in: database)
             return try requiredFixture(id: id, in: database)
         }
     }
@@ -974,6 +1011,10 @@ public struct WicketStore: Sendable {
             ) ?? 0
             guard eventCount == 0 else {
                 throw WicketStoreError.scoringConflict
+            }
+            for row in try Row.fetchAll(database, sql: "SELECT payload FROM fixture_lineups WHERE fixture_id = ?", arguments: [fixtureID.rawValue]) {
+                let lineup = try JSONDecoder().decode(TeamLineup.self, from: row["payload"] as Data)
+                guard lineup.playerIDs.count <= rules.playersPerSide else { throw LineupError.teamSizeExceeded(rules.playersPerSide) }
             }
             try database.execute(
                 sql: """
@@ -1081,7 +1122,7 @@ public struct WicketStore: Sendable {
     /// owning league's preset. The copy is frozen into `match_rules` as soon as
     /// rules are set or the first ball is appended, so later league edits only
     /// affect future matches and replay never reads mutable league config.
-    private func unconfiguredRules(fixtureID: FixtureID, in database: Database) throws -> MatchRules {
+    func unconfiguredRules(fixtureID: FixtureID, in database: Database) throws -> MatchRules {
         let leagueIDString = try String.fetchOne(
             database,
             sql: "SELECT league_id FROM fixtures WHERE id = ?",
@@ -1313,7 +1354,9 @@ public struct WicketStore: Sendable {
             playerCount: playerCount,
             fixtureCount: fixtureCount,
             scoringEventCount: scoringEventCount,
-            pointsOverrideCount: pointsOverrideCount
+            pointsOverrideCount: pointsOverrideCount,
+            lineupTemplateCount: try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM lineup_templates l JOIN teams t ON t.id = l.team_id WHERE t.league_id = ?", arguments: [id.rawValue]) ?? 0,
+            fixtureLineupCount: try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM fixture_lineups l JOIN fixtures f ON f.id = l.fixture_id WHERE f.league_id = ?", arguments: [id.rawValue]) ?? 0
         )
     }
 

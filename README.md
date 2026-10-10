@@ -33,7 +33,7 @@ Wicket Tally puts the whole match day on one offline iPhone: fixtures, teams, to
 ## How to use (intended end-to-end workflow)
 
 1. Create a league → add teams (name, colour, players) → schedule fixtures (date, time, ground).
-2. On match day open the fixture → record toss and playing XI → start innings.
+2. Save reusable lineups from a team’s **Lineup templates** screen. At fixture setup choose a template or fresh lineup for each side, edit participants and optional batting order, then record the toss and start innings. Fixture edits do not change templates or ledger attribution; recorded deliveries show a warning. Archived/deleted participants must be removed or replaced before saving, and attribution can remain unknown.
 3. Score ball-by-ball in the outdoor scorer; glance mode shows runs/wickets/overs/RRR/last-over dots.
 4. Innings end → auto scorecard → second innings → result auto-derived, editable with a logged manual correction.
 5. Standings update instantly; player stats accrue across the league.

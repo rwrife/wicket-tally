@@ -142,9 +142,7 @@ final class FixturesViewModel {
 
     func save(_ draft: FixtureDraft, editing existing: FixtureRecord?) async throws -> [FixtureConflict] {
         let store = try requiredStore()
-        let participantIDs = Set(players
-            .filter { $0.teamID == draft.homeTeamID || $0.teamID == draft.awayTeamID }
-            .map(\.id))
+        let participantIDs = Set(draft.lineups.values.flatMap(\.playerIDs))
         let now = Date()
         let candidate = FixtureRecord(
             id: existing?.id ?? FixtureID(UUID().uuidString.lowercased()),
@@ -174,7 +172,8 @@ final class FixturesViewModel {
                 participatingPlayerIDs: participantIDs,
                 startsAt: draft.startsAt,
                 endsAt: draft.endsAt,
-                reminder: draft.reminder
+                reminder: draft.reminder,
+                lineups: draft.lineups
             )
         } else {
             saved = try store.createFixture(
@@ -186,7 +185,8 @@ final class FixturesViewModel {
                 participatingPlayerIDs: participantIDs,
                 startsAt: draft.startsAt,
                 endsAt: draft.endsAt,
-                reminder: draft.reminder
+                reminder: draft.reminder,
+                lineups: draft.lineups
             )
         }
         try await notifications.replaceReminder(for: saved)
@@ -231,8 +231,10 @@ final class FixturesViewModel {
 
     private func message(for error: Error) -> String {
         switch error {
+        case let error as LineupError: return error.localizedDescription
         case WicketStoreError.invalidName: return "Enter a fixture or ground name."
         case WicketStoreError.invalidTimeSlot: return "The fixture must end after it starts."
+        case WicketStoreError.scoringConflict: return "The teams cannot change after scoring starts. Lineup participants can still be edited."
         case WicketStoreError.invalidTeams: return "Choose two different teams."
         case WicketStoreError.parentNotFound: return "A selected league, team, ground, or player no longer exists."
         default: return "The local fixture change could not be saved."
@@ -249,6 +251,7 @@ struct FixtureDraft {
     var startsAt: Date
     var endsAt: Date
     var reminder: FixtureReminder
+    var lineups: [TeamID: TeamLineup] = [:]
 }
 
 @MainActor
