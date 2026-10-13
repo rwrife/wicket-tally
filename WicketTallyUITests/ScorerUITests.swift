@@ -51,6 +51,40 @@ final class ScorerUITests: XCTestCase {
     }
 
     @MainActor
+    func testOptInLockScreenScoreboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing-scorer"]
+        app.launch()
+        let scoreMatch = app.buttons["Score match"]
+        XCTAssertTrue(scoreMatch.waitForExistence(timeout: 15))
+        scoreMatch.tap()
+        app.buttons["scorer.recordToss"].tap()
+        app.buttons["scorer.startInnings"].tap()
+        let toggle = app.buttons["scorer.liveActivityToggle"]
+        guard toggle.waitForExistence(timeout: 5) else {
+            XCTAssertTrue(app.staticTexts["scorer.liveActivityFallback"].exists,
+                          "Expected optional static fallback when Live Activities are disabled")
+            return
+        }
+        toggle.tap()
+        XCTAssertTrue(app.buttons["Stop Lock Screen scoreboard"].exists)
+        app.buttons["scorer.ball.4"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == '4/0'")).firstMatch
+            .waitForExistence(timeout: 5))
+        XCUIDevice.shared.press(.lock)
+        let lock = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        XCTAssertTrue(lock.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS '4/0'"))
+            .firstMatch.waitForExistence(timeout: 15),
+            "Lock Screen did not show locally updated activity")
+        let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        image.name = "05-lock-screen-local-scoreboard"
+        image.lifetime = .keepAlways
+        add(image)
+        XCUIDevice.shared.press(.home)
+    }
+
+    @MainActor
     private func attach(_ app: XCUIApplication, name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
