@@ -1,4 +1,7 @@
-#if canImport(ActivityKit)
+// ActivityKit exists on macOS but the ActivityAttributes protocol is marked
+// unavailable there, so gate on os(iOS) — `canImport` alone is not enough
+// (macOS package-test lane compiles this file and fails; CI run 38452440531).
+#if canImport(ActivityKit) && os(iOS)
 import ActivityKit
 import Foundation
 
