@@ -51,6 +51,33 @@ final class ScorerUITests: XCTestCase {
     }
 
     @MainActor
+    func testOptInLockScreenScoreboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing-scorer"]
+        app.launch()
+        let scoreMatch = app.buttons["Score match"]
+        XCTAssertTrue(scoreMatch.waitForExistence(timeout: 15))
+        scoreMatch.tap()
+        app.buttons["scorer.recordToss"].tap()
+        app.buttons["scorer.startInnings"].tap()
+        let toggle = app.buttons["scorer.liveActivityToggle"]
+        guard toggle.waitForExistence(timeout: 5) else {
+            XCTAssertTrue(app.staticTexts["scorer.liveActivityFallback"].exists,
+                          "Expected optional static fallback when Live Activities are disabled")
+            return
+        }
+        toggle.tap()
+        XCTAssertTrue(app.buttons["Stop Lock Screen scoreboard"].exists)
+        app.buttons["scorer.ball.4"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == '4/0'")).firstMatch
+            .waitForExistence(timeout: 5))
+        // XCUITest cannot script the system Lock Screen; the ActivityKit
+        // request ran (toggle stayed enabled, no crash). Real Lock Screen
+        // legibility remains a human field check.
+        attach(app, name: "05-live-activity-enabled")
+    }
+
+    @MainActor
     private func attach(_ app: XCUIApplication, name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name

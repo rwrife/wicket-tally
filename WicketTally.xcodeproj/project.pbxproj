@@ -9,12 +9,33 @@
 /* Begin PBXBuildFile section */
 		AA00000000000000000000B0 /* WicketKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA00000000000000000000AF /* WicketKit */; };
 		AA00000000000000000000B4 /* WicketStore in Frameworks */ = {isa = PBXBuildFile; productRef = AA00000000000000000000B5 /* WicketStore */; };
+		AA00000000000000000000D1 /* WicketKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA00000000000000000000D8 /* WicketKit (widgets) */; };
+		AA00000000000000000000D2 /* IndicaTheme in Frameworks */ = {isa = PBXBuildFile; productRef = AA00000000000000000000DA /* IndicaTheme */; };
+		AA00000000000000000000D3 /* MatchScoreboardWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000D5 /* MatchScoreboardWidget.swift */; };
+		AA00000000000000000000D7 /* WicketTallyWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000D0 /* WicketTallyWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AA00000000000000000000DC /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AA00000000000000000000D7 /* WicketTallyWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		AA00000000000000000000B1 /* WicketTally.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WicketTally.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA00000000000000000000B3 /* toolchain.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = toolchain.json; sourceTree = "<group>"; };
 		AA00000000000000000000C1 /* WicketTallyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WicketTallyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA00000000000000000000D0 /* WicketTallyWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WicketTallyWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA00000000000000000000D5 /* MatchScoreboardWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchScoreboardWidget.swift; sourceTree = "<group>"; };
+		AA00000000000000000000DB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -41,7 +62,9 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AA00000000000000000000C3 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		AA00000000000000000000DE /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (AA00000000000000000000D1 /* WicketKit in Frameworks */, AA00000000000000000000D2 /* IndicaTheme in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
+
 
 /* Begin PBXGroup section */
 		AA00000000000000000000AD = {
@@ -49,6 +72,7 @@
 			children = (
 				AA00000000000000000000AC /* WicketTally */,
 				AA00000000000000000000C2 /* WicketTallyUITests */,
+				AA00000000000000000000DD /* WicketTallyWidgets */,
 				AA00000000000000000000B3 /* toolchain.json */,
 				AA00000000000000000000B2 /* Products */,
 			);
@@ -59,11 +83,22 @@
 			children = (
 				AA00000000000000000000B1 /* WicketTally.app */,
 				AA00000000000000000000C1 /* WicketTallyUITests.xctest */,
+				AA00000000000000000000D0 /* WicketTallyWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
+		AA00000000000000000000DD /* WicketTallyWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000000000000000000D5 /* MatchScoreboardWidget.swift */,
+				AA00000000000000000000DB /* Info.plist */,
+			);
+			path = WicketTallyWidgets;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
+
 
 /* Begin PBXNativeTarget section */
 		AA00000000000000000000A2 /* WicketTally */ = {
@@ -73,10 +108,12 @@
 				AA00000000000000000000A9 /* Sources */,
 				AA00000000000000000000AA /* Frameworks */,
 				AA00000000000000000000AB /* Resources */,
+				AA00000000000000000000DC /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				AA00000000000000000000E1 /* WicketTallyWidgets */,
 			);
 			fileSystemSynchronizedGroups = (
 				AA00000000000000000000AC /* WicketTally */,
@@ -102,14 +139,35 @@
 			productReference = AA00000000000000000000C1;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		AA00000000000000000000D9 /* WicketTallyWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA00000000000000000000E3;
+			buildPhases = (
+				AA00000000000000000000DF /* Sources */,
+				AA00000000000000000000DE /* Frameworks */,
+				AA00000000000000000000E2 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = WicketTallyWidgets;
+			packageProductDependencies = (
+				AA00000000000000000000D8 /* WicketKit (widgets) */,
+				AA00000000000000000000DA /* IndicaTheme */,
+			);
+			productName = WicketTallyWidgets;
+			productReference = AA00000000000000000000D0 /* WicketTallyWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXContainerItemProxy section */
 		AA00000000000000000000CB = {isa = PBXContainerItemProxy; containerPortal = AA00000000000000000000A1; proxyType = 1; remoteGlobalIDString = AA00000000000000000000A2; remoteInfo = WicketTally; };
+		AA00000000000000000000E0 = {isa = PBXContainerItemProxy; containerPortal = AA00000000000000000000A1; proxyType = 1; remoteGlobalIDString = AA00000000000000000000D9; remoteInfo = WicketTallyWidgets; };
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXTargetDependency section */
 		AA00000000000000000000CA = {isa = PBXTargetDependency; target = AA00000000000000000000A2; targetProxy = AA00000000000000000000CB; };
+		AA00000000000000000000E1 = {isa = PBXTargetDependency; target = AA00000000000000000000D9; targetProxy = AA00000000000000000000E0; };
 /* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
@@ -124,6 +182,7 @@
 						CreatedOnToolsVersion = 26.0.1;
 					};
 					AA00000000000000000000C0 = {CreatedOnToolsVersion = 26.0.1; TestTargetID = AA00000000000000000000A2; };
+					AA00000000000000000000D9 = {CreatedOnToolsVersion = 26.0.1; };
 				};
 			};
 			buildConfigurationList = AA00000000000000000000A3 /* Build configuration list for PBXProject "WicketTally" */;
@@ -137,6 +196,7 @@
 			mainGroup = AA00000000000000000000AD;
 			packageReferences = (
 				AA00000000000000000000AE /* XCLocalSwiftPackageReference "Packages/WicketKit" */,
+				AA00000000000000000000E6 /* XCLocalSwiftPackageReference "Packages/IndicaTheme" */,
 			);
 			productRefGroup = AA00000000000000000000B2 /* Products */;
 			projectDirPath = "";
@@ -144,6 +204,7 @@
 			targets = (
 				AA00000000000000000000A2 /* WicketTally */,
 				AA00000000000000000000C0 /* WicketTallyUITests */,
+				AA00000000000000000000D9 /* WicketTallyWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -157,6 +218,7 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AA00000000000000000000C5 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		AA00000000000000000000E2 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -168,6 +230,7 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AA00000000000000000000C4 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		AA00000000000000000000DF = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (AA00000000000000000000D3 /* MatchScoreboardWidget.swift */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
@@ -255,6 +318,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Wicket Tally";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -284,6 +348,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Wicket Tally";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -335,6 +400,54 @@
 			};
 			name = Release;
 		};
+		AA00000000000000000000E4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = WicketTallyWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.infinityball.wickettally.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		AA00000000000000000000E5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = WicketTallyWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.infinityball.wickettally.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -357,12 +470,17 @@
 			defaultConfigurationName = Release;
 		};
 		AA00000000000000000000C6 = {isa = XCConfigurationList; buildConfigurations = (AA00000000000000000000C7, AA00000000000000000000C8,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		AA00000000000000000000E3 = {isa = XCConfigurationList; buildConfigurations = (AA00000000000000000000E4, AA00000000000000000000E5,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
 		AA00000000000000000000AE /* XCLocalSwiftPackageReference "Packages/WicketKit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/WicketKit;
+		};
+		AA00000000000000000000E6 /* XCLocalSwiftPackageReference "Packages/IndicaTheme" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/IndicaTheme;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -374,6 +492,14 @@
 		AA00000000000000000000B5 /* WicketStore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = WicketStore;
+		};
+		AA00000000000000000000D8 /* WicketKit (widgets) */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WicketKit;
+		};
+		AA00000000000000000000DA /* IndicaTheme */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = IndicaTheme;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

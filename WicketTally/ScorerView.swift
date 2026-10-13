@@ -16,6 +16,9 @@ struct ScorerView: View {
     @State private var showingWicketPicker = false
     @State private var showingPlayers = false
     @State private var showingRuleEditor = false
+    /// Issue #20: opt-in Lock Screen companion, persisted per fixture.
+    @State private var liveActivityEnabled = false
+    @State private var liveActivitiesAvailable = LiveActivityManager.shared.areActivitiesEnabled
     @State private var extraRuns = 1
     @State private var batRuns = 0
     @State private var wicketKind: WicketKind = .bowled
@@ -42,6 +45,25 @@ struct ScorerView: View {
             ScrollView {
                 scoreboard
                     .padding(16)
+                if liveActivitiesAvailable && (model.state.status == .inProgress || model.isInningsBreak) {
+                    Button(liveActivityEnabled ? "Stop Lock Screen scoreboard" : "Start Lock Screen scoreboard") {
+                        liveActivityEnabled.toggle()
+                        LiveActivityManager.shared.setEnabled(liveActivityEnabled, for: model.fixture.id.rawValue)
+                        if liveActivityEnabled {
+                            syncLiveActivity()
+                        } else {
+                            LiveActivityManager.shared.stop(for: model.fixture.id.rawValue)
+                        }
+                    }
+                    .buttonStyle(SunActionButtonStyle(compact: true))
+                    .padding(.horizontal, 16)
+                    .accessibilityIdentifier("scorer.liveActivityToggle")
+                } else {
+                    Text("Lock Screen updates unavailable. \(livePresentation.fallbackText)")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 16)
+                        .accessibilityIdentifier("scorer.liveActivityFallback")
+                }
             }
 
             if glanceMode {
@@ -79,6 +101,16 @@ struct ScorerView: View {
                 }
                 .accessibilityIdentifier("scorer.glanceToggle")
             }
+        }
+        .onAppear {
+            liveActivitiesAvailable = LiveActivityManager.shared.areActivitiesEnabled
+            liveActivityEnabled = LiveActivityManager.shared.isEnabled(for: model.fixture.id.rawValue)
+            syncLiveActivity()
+        }
+        .onChange(of: model.session) { _, _ in
+            // Always route through the manager: closed/disabled states must
+            // end or clean up an existing activity, not linger on the board.
+            syncLiveActivity()
         }
         .sheet(
             isPresented: Binding(
@@ -120,6 +152,24 @@ struct ScorerView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+    }
+
+    private var livePresentation: LiveScoreboardPresentation {
+        LiveScoreboardPresenter.present(
+            fixtureID: model.fixture.id.rawValue,
+            state: model.state,
+            homeTeamID: model.fixture.homeTeamID,
+            homeName: homeName,
+            awayName: awayName
+        )
+    }
+
+    private var liveActivityClosed: Bool {
+        livePresentation.isMatchClosed
+    }
+
+    private func syncLiveActivity() {
+        LiveActivityManager.shared.sync(presentation: livePresentation)
     }
 
     @ViewBuilder
