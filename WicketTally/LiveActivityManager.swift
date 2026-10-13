@@ -2,8 +2,12 @@ import ActivityKit
 import Foundation
 import WicketKit
 
-/// Local-only scoreboard. Queue operations so a rapid score/stop/restart cannot
-/// resurrect an older ActivityKit state after a newer ledger commit.
+/// Local-only scoreboard companion for the active match (issue #20).
+///
+/// In Swift 6, `Activity<Attributes>` methods (`update`, `end`) are nonisolated
+/// asynchronous calls while this manager is `@MainActor`. Querying `activities`
+/// inside a detached task prevents sending actor-isolated `Activity` references
+/// across boundaries.
 @MainActor
 final class LiveActivityManager {
     static let shared = LiveActivityManager()
@@ -24,45 +28,49 @@ final class LiveActivityManager {
     }
 
     func sync(presentation: LiveScoreboardPresentation) {
+        let active = isEnabled(for: presentation.fixtureID)
+            && areActivitiesEnabled
+            && presentation.phase != .notStarted
+            && !presentation.isMatchClosed
+        let state = MatchScoreboardActivityAttributes.ContentState(presentation: presentation)
+        let fixtureID = presentation.fixtureID
+        let isClosed = presentation.isMatchClosed
+
         let previous = pending
         pending = Task { @MainActor in
             await previous?.value
-            let running = Activity<MatchScoreboardActivityAttributes>.activities
-                .filter { $0.attributes.fixtureID == presentation.fixtureID }
-            let state = MatchScoreboardActivityAttributes.ContentState(presentation: presentation)
-            let active = isEnabled(for: presentation.fixtureID)
-                && areActivitiesEnabled
-                && presentation.phase != .notStarted
-                && !presentation.isMatchClosed
+            await Task.detached {
+                let running = Activity<MatchScoreboardActivityAttributes>.activities
+                    .filter { $0.attributes.fixtureID == fixtureID }
 
-            if !active {
-                for activity in running {
-                    await activity.end(
-                        presentation.isMatchClosed ? ActivityContent(state: state, staleDate: nil) : nil,
-                        dismissalPolicy: .immediate
-                    )
+                if !active {
+                    for activity in running {
+                        await activity.end(
+                            isClosed ? ActivityContent(state: state, staleDate: nil) : nil,
+                            dismissalPolicy: .immediate
+                        )
+                    }
+                    return
                 }
-                return
-            }
 
-            if let current = running.first {
-                await current.update(ActivityContent(state: state, staleDate: nil))
-                for duplicate in running.dropFirst() {
-                    await duplicate.end(nil, dismissalPolicy: .immediate)
+                if let current = running.first {
+                    await current.update(ActivityContent(state: state, staleDate: nil))
+                    for duplicate in running.dropFirst() {
+                        await duplicate.end(nil, dismissalPolicy: .immediate)
+                    }
+                } else {
+                    let attributes = MatchScoreboardActivityAttributes(fixtureID: fixtureID)
+                    do {
+                        _ = try Activity<MatchScoreboardActivityAttributes>.request(
+                            attributes: attributes,
+                            content: ActivityContent(state: state, staleDate: nil),
+                            pushType: nil
+                        )
+                    } catch {
+                        // Optional companion; keep scoring path working.
+                    }
                 }
-            } else {
-                let attributes = MatchScoreboardActivityAttributes(fixtureID: presentation.fixtureID)
-                do {
-                    _ = try Activity<MatchScoreboardActivityAttributes>.request(
-                        attributes: attributes,
-                        content: ActivityContent(state: state, staleDate: nil),
-                        pushType: nil
-                    )
-                } catch {
-                    // Live Activity is optional; scoring must remain usable.
-                    // If iOS rejects a request, the in-app board stays visible.
-                }
-            }
+            }.value
         }
     }
 
@@ -70,10 +78,12 @@ final class LiveActivityManager {
         let previous = pending
         pending = Task { @MainActor in
             await previous?.value
-            for activity in Activity<MatchScoreboardActivityAttributes>.activities
-                where activity.attributes.fixtureID == fixtureID {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
+            await Task.detached {
+                for activity in Activity<MatchScoreboardActivityAttributes>.activities
+                    where activity.attributes.fixtureID == fixtureID {
+                    await activity.end(nil, dismissalPolicy: .immediate)
+                }
+            }.value
         }
     }
 }
