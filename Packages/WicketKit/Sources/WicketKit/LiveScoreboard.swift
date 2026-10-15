@@ -67,6 +67,16 @@ public struct LiveScoreboardPresentation: Sendable, Codable, Equatable {
         phase == .completed || phase == .noVerdict
     }
 
+    /// Wrist-sized second line derived only from ledger state: overs, then
+    /// chase figures only when the ledger actually defines them. Unknown chase
+    /// figures are omitted rather than turned into a zero target or rate.
+    public var watchSecondaryLine: String {
+        var line = "\(overs) ov"
+        if target != .unknown { line += " · need \(target.rendered)" }
+        if requiredRunRate != .unknown { line += " · rrr \(requiredRunRate.rendered)" }
+        return line
+    }
+
     /// Static text fallback for devices or settings where Live Activities
     /// are unavailable — the same deterministic scoreboard, as one line.
     public var fallbackText: String {

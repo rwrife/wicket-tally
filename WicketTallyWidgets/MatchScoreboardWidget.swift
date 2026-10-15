@@ -45,6 +45,9 @@ struct MatchScoreboardWidget: Widget {
                     .monospacedDigit()
             }
         }
+        // watchOS 11 mirrors iPhone Live Activities into Smart Stack without
+        // a watch app; opt into a wrist-sized layout rather than scaling Lock Screen UI.
+        .supplementalActivityFamilies([.small])
     }
 }
 
@@ -54,6 +57,7 @@ struct MatchScoreboardWidget: Widget {
 /// Type size via minimumScaleFactor.
 struct LockScreenScoreboard: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.activityFamily) private var activityFamily
     let state: MatchScoreboardActivityAttributes.ContentState
 
     private var theme: any IndicaTheme {
@@ -61,7 +65,63 @@ struct LockScreenScoreboard: View {
     }
 
     var body: some View {
-        let palette = theme.palette
+        // Apple Watch Smart Stack renders the `.small` family in a wrist tile;
+        // the Lock Screen layout's four stacked rows overflow it and truncate
+        // the scoreline, so the wrist gets its own two-line composition.
+        if activityFamily == .small {
+            WatchScoreboard(state: state, palette: theme.palette)
+        } else {
+            LockScreenLayout(state: state, palette: theme.palette)
+        }
+    }
+}
+
+/// Wrist tile: batting side plus score, then overs and the one chase figure
+/// that matters. Everything is text so Dynamic Type scales it, and only the
+/// highest-value facts survive the smaller canvas.
+private struct WatchScoreboard: View {
+    let state: MatchScoreboardActivityAttributes.ContentState
+    let palette: IndicaPalette
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(state.battingName)
+                .font(.caption2.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(state.scoreline)
+                .font(.system(.title3, design: .rounded, weight: .black))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            if state.isMatchClosed, state.resultText != "unknown" {
+                Text(state.resultText)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(2)
+            } else {
+                Text(state.watchSecondaryLine)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+        .foregroundStyle(palette.scoreboardForeground.color)
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(palette.scoreboardBackground.color)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The scorer's trophy-glow scoreboard compressed for the Lock Screen.
+/// The sunlight-derived tokens keep the dark ground and warm high-contrast
+/// text that read at arm's length; every figure stays text at every Dynamic
+/// Type size via minimumScaleFactor.
+private struct LockScreenLayout: View {
+    let state: MatchScoreboardActivityAttributes.ContentState
+    let palette: IndicaPalette
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("\(state.homeName) · \(state.awayName)")
                 .font(.headline.weight(.bold))

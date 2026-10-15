@@ -26,6 +26,7 @@ public struct MatchScoreboardActivityAttributes: ActivityAttributes {
         public let requiredRunRate: String
         public let resultText: String
         public let isMatchClosed: Bool
+        public let watchSecondaryLine: String
 
         public init(presentation: LiveScoreboardPresentation) {
             homeName = presentation.homeName
@@ -38,6 +39,7 @@ public struct MatchScoreboardActivityAttributes: ActivityAttributes {
             requiredRunRate = presentation.requiredRunRate.rendered
             resultText = presentation.resultText.rendered
             isMatchClosed = presentation.isMatchClosed
+            watchSecondaryLine = presentation.watchSecondaryLine
         }
     }
 
