@@ -53,6 +53,7 @@ struct LiveScoreboardPresentationTests {
         #expect(board.requiredRunRate == .unknown)
         #expect(board.resultText == .unknown)
         #expect(!board.isMatchClosed)
+        #expect(board.watchSecondaryLine == "unknown ov")
     }
 
     @Test("a committed ball updates score, overs, and batting side")
@@ -164,5 +165,58 @@ struct LiveScoreboardPresentationTests {
         ])
         #expect(board.scoreline == "3/1")
         #expect(board.overs == "0.0")
+    }
+}
+
+/// Issue #21: the wrist tile gets one deterministic second line derived from
+/// the same ledger replay. Unknown figures must be omitted, never rendered as
+/// a zero target or rate, and a closed match must never show a chase rate.
+@Suite("Issue 21 watch secondary line")
+struct WatchScoreboardLineTests {
+    @Test("first innings shows overs only — no target, no rate")
+    func firstInningsOversOnly() {
+        let board = present([
+            begin(1, innings: 1, batting: away, bowling: home),
+            bowl(2, batRuns: 4),
+        ])
+        #expect(board.watchSecondaryLine == "0.1 ov")
+    }
+
+    @Test("an innings break carries the derivable chase target")
+    func inningsBreakTarget() {
+        let board = present([
+            begin(1, innings: 1, batting: home, bowling: away),
+            bowl(2, batRuns: 4),
+            MatchEvent(sequence: 3, kind: .inningsEnded(reason: .declared)),
+        ])
+        #expect(board.watchSecondaryLine == "0.1 ov · need 5")
+    }
+
+    @Test("a live chase carries both target and required run rate")
+    func liveChaseBothFigures() {
+        let board = present([
+            begin(1, innings: 1, batting: home, bowling: away),
+            bowl(2, batRuns: 4),
+            MatchEvent(sequence: 3, kind: .inningsEnded(reason: .declared)),
+            begin(4, innings: 2, batting: away, bowling: home),
+            bowl(5, batRuns: 1),
+        ], rules: MatchRules(oversPerInnings: 2, ballsPerOver: 1, maxWickets: 5))
+        let line = board.watchSecondaryLine
+        #expect(line.hasPrefix("1.0 ov · need 5"))
+        #expect(line.contains("· rrr"))
+    }
+
+    @Test("a derived verdict suppresses chase figures on the wrist line")
+    func closedMatchNoChaseFigures() {
+        let board = present([
+            begin(1, innings: 1, batting: home, bowling: away),
+            bowl(2, batRuns: 4),
+            MatchEvent(sequence: 3, kind: .inningsEnded(reason: .oversComplete)),
+            begin(4, innings: 2, batting: away, bowling: home),
+            bowl(5, wicket: WicketEvent(kind: .bowled, dismissed: striker)),
+        ], rules: MatchRules(oversPerInnings: 1, ballsPerOver: 1, maxWickets: 2))
+        #expect(board.isMatchClosed)
+        #expect(!board.watchSecondaryLine.contains("need"))
+        #expect(!board.watchSecondaryLine.contains("rrr"))
     }
 }

@@ -46,7 +46,7 @@ struct ScorerView: View {
                 scoreboard
                     .padding(16)
                 if liveActivitiesAvailable && (model.state.status == .inProgress || model.isInningsBreak) {
-                    Button(liveActivityEnabled ? "Stop Lock Screen scoreboard" : "Start Lock Screen scoreboard") {
+                    Button(liveActivityEnabled ? "Stop live scoreboard" : "Start live scoreboard") {
                         liveActivityEnabled.toggle()
                         LiveActivityManager.shared.setEnabled(liveActivityEnabled, for: model.fixture.id.rawValue)
                         if liveActivityEnabled {

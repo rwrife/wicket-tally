@@ -67,7 +67,7 @@ final class ScorerUITests: XCTestCase {
             return
         }
         toggle.tap()
-        XCTAssertTrue(app.buttons["Stop Lock Screen scoreboard"].exists)
+        XCTAssertTrue(app.buttons["Stop live scoreboard"].exists)
         app.buttons["scorer.ball.4"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == '4/0'")).firstMatch
             .waitForExistence(timeout: 5))
